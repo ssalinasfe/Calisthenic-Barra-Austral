@@ -379,3 +379,6 @@ docker exec calistia-db pg_dump -U calistia -d calistia > backup_calistia_$(date
   = Cardio, `muscles: ['Heart']`, sin `type` machine porque es al aire libre). El
   buscador (`ExerciseSearch`) usa `EXERCISES` del frontend, no hace falta tocar backend.
   · `exercises.js`
+- [2026-07-18] Catálogo: nuevo ejercicio **Burpees** (id 33, `category: 'Remo'` = Cardio,
+  `muscles: ['Heart']`). El usuario lo clasificó como Cardio (es full-body: push+legs+
+  cardio, sin pull, pero eligió tratarlo como acondicionamiento). · `exercises.js`

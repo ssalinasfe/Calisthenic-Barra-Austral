@@ -39,6 +39,7 @@ export const EXERCISES = [
   { id: 30, name: 'Air Bike',                     es: 'Bicicleta de aire',             category: 'Remo',    muscles: ['Heart'], type: 'machine' },
   { id: 31, name: 'Spin Bike',                    es: 'Bicicleta de spinning',         category: 'Remo',    muscles: ['Heart'], type: 'machine' },
   { id: 32, name: 'Jogging',                      es: 'Trotar',                        category: 'Remo',    muscles: ['Heart'] },
+  { id: 33, name: 'Burpees',                      es: 'Burpees',                       category: 'Remo',    muscles: ['Heart'] },
 ]
 
 // Helper: get the type for an exercise by name (defaults to 'reps')
