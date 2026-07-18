@@ -94,6 +94,10 @@ class Session(Base):
     categories       = Column(JSON, default=list)   # muscle groups trained, chosen by the user
     location_id      = Column(String(64), ForeignKey('locations.id', ondelete='SET NULL'))
     routine_id       = Column(String(64))   # weak reference (no FK so deleting a routine doesn't cascade)
+    avg_hr           = Column(Integer)              # heart rate (bpm) captured from a BLE HR belt
+    max_hr           = Column(Integer)
+    min_hr           = Column(Integer)
+    hr_samples       = Column(JSON, default=list)   # [{t: secondsFromStart, bpm}] downsampled series
 
     user      = relationship('User', back_populates='sessions')
     exercises = relationship('SessionExercise', back_populates='session',
@@ -127,6 +131,9 @@ class SessionSet(Base):
     reps                = Column(Integer)
     weight              = Column(Float)
     rest_duration       = Column(Integer)
+    start_hr            = Column(Integer)   # bpm when "Start" was pressed
+    avg_hr              = Column(Integer)   # heart rate (bpm) during this set
+    max_hr              = Column(Integer)
 
     exercise = relationship('SessionExercise', back_populates='sets')
 
@@ -148,6 +155,13 @@ def init_db():
         # idempotent column additions
         conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT ''"))
         conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS categories JSON DEFAULT '[]'"))
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS avg_hr INTEGER"))
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS max_hr INTEGER"))
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS min_hr INTEGER"))
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS hr_samples JSON DEFAULT '[]'"))
+        conn.execute(text("ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS start_hr INTEGER"))
+        conn.execute(text("ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS avg_hr INTEGER"))
+        conn.execute(text("ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS max_hr INTEGER"))
         conn.execute(text("ALTER TABLE routines ADD COLUMN IF NOT EXISTS categories JSON DEFAULT '[]'"))
 
 

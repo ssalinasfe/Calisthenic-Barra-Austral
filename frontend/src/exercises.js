@@ -1,7 +1,7 @@
 // Each exercise has muscles in English (canonical). MUSCLE_ES maps to Spanish.
 export const EXERCISES = [
   // ===== PUSH =====
-  { id: 1,  name: 'Plank Hold',                   es: 'Plancha',                       category: 'Push',    muscles: ['Core', 'Shoulders'] },
+  { id: 1,  name: 'Plank Hold',                   es: 'Plancha',                       category: 'Push',    muscles: ['Core', 'Shoulders'], isometric: true },
   { id: 2,  name: 'Scapula Push-ups',             es: 'Flexiones escapulares',         category: 'Push',    muscles: ['Serratus', 'Traps', 'Shoulders'] },
   { id: 3,  name: 'Negative Push-ups',            es: 'Flexiones negativas',           category: 'Push',    muscles: ['Chest', 'Triceps', 'Shoulders'] },
   { id: 4,  name: 'Push-ups',                     es: 'Flexión estándar',              category: 'Push',    muscles: ['Chest', 'Triceps', 'Shoulders'] },
@@ -17,7 +17,7 @@ export const EXERCISES = [
   { id: 12, name: 'Banded Horizontal Pull-aparts',es: 'Aperturas horizontales con banda', category: 'Pull', muscles: ['Rear Delts', 'Rhomboids'] },
   { id: 13, name: 'Banded Pull-downs',            es: 'Jalones con banda',             category: 'Pull',    muscles: ['Lats', 'Back'] },
   { id: 14, name: 'Bent Over Barbell Rows',       es: 'Remo inclinado con barra',      category: 'Pull',    muscles: ['Lats', 'Mid Back', 'Biceps'] },
-  { id: 15, name: 'Passive Hang',                 es: 'Colgado pasivo',                category: 'Pull',    muscles: ['Forearms', 'Lats'] },
+  { id: 15, name: 'Passive Hang',                 es: 'Colgado pasivo',                category: 'Pull',    muscles: ['Forearms', 'Lats'], isometric: true },
   { id: 16, name: 'Scapula Pull-ups',             es: 'Dominadas escapulares',         category: 'Pull',    muscles: ['Traps', 'Lats'] },
   { id: 17, name: 'Australian Pull-ups',          es: 'Dominadas australianas',        category: 'Pull',    muscles: ['Lats', 'Mid Back', 'Biceps'] },
   { id: 18, name: 'Negative Pull-ups',            es: 'Dominadas negativas',           category: 'Pull',    muscles: ['Lats', 'Biceps', 'Forearms'] },
@@ -38,12 +38,21 @@ export const EXERCISES = [
   { id: 29, name: 'Treadmill',                    es: 'Trotadora',                     category: 'Remo',    muscles: ['Heart'], type: 'machine' },
   { id: 30, name: 'Air Bike',                     es: 'Bicicleta de aire',             category: 'Remo',    muscles: ['Heart'], type: 'machine' },
   { id: 31, name: 'Spin Bike',                    es: 'Bicicleta de spinning',         category: 'Remo',    muscles: ['Heart'], type: 'machine' },
+  { id: 32, name: 'Jogging',                      es: 'Trotar',                        category: 'Remo',    muscles: ['Heart'] },
 ]
 
 // Helper: get the type for an exercise by name (defaults to 'reps')
 export function exerciseTypeOf(name) {
   const e = EXERCISES.find(x => x.name === name || x.es === name)
   return e?.type || 'reps'
+}
+
+// Isometric holds (Plank, Hang, etc.): progress is measured in seconds held, not
+// reps. Uses the catalog flag, plus a name fallback so custom-named holds work too.
+export function isIsometric(name) {
+  const e = EXERCISES.find(x => x.name === name || x.es === name)
+  if (e) return !!e.isometric
+  return /\b(hold|hang|plank|isometric|wall\s*sit|l-?sit|hollow|bridge)\b/i.test(name || '')
 }
 
 // Lookup: exercise canonical name (English) → muscles
@@ -213,6 +222,27 @@ export const FULL_BODY_STYLE = {
   borderColor: 'rgba(217,70,239,0.85)',
   color: '#ffffff',
   boxShadow: '0 0 10px rgba(217,70,239,0.35)',
+}
+
+// Standout style for a multi-group (but not Full Body) session/day, e.g.
+// "Push Legs". A gradient of the trained groups' own colors with a vivid blended
+// border and a soft glow — flashier than a single category, milder than Full Body.
+export function comboCategoryStyle(categories, variant = 'pill') {
+  const cats = (categories || []).filter(c => CATEGORY_RGB[c])
+  if (cats.length < 2) return categoryColorStyle(categories, variant)
+  const bgAlpha = variant === 'fill' ? 0.5 : 0.42
+  const stops = cats.map((c, i) => {
+    const [r, g, b] = CATEGORY_RGB[c]
+    const pct = Math.round((i / (cats.length - 1)) * 100)
+    return `rgba(${r}, ${g}, ${b}, ${bgAlpha}) ${pct}%`
+  }).join(', ')
+  const [br, bg, bb] = blendCategoryColor(cats)
+  return {
+    background: `linear-gradient(135deg, ${stops})`,
+    borderColor: `rgba(${br}, ${bg}, ${bb}, 0.75)`,
+    color: '#ffffff',
+    boxShadow: `0 0 6px rgba(${br}, ${bg}, ${bb}, 0.3)`,
+  }
 }
 
 // Inline style for a routine's color badge/fill, built from its blended RGB.

@@ -1,17 +1,17 @@
 import { useState } from 'react'
-import { ChevronRight, ListChecks, MapPin, BookOpen, TrendingUp, Activity, ArrowLeft } from 'lucide-react'
+import { ChevronRight, ListChecks, MapPin, BookOpen, List, ArrowLeft, HeartPulse } from 'lucide-react'
 import Routines from './Routines'
 import Locations from './Locations'
 import Documentation from './Documentation'
-import ExerciseProgress from './ExerciseProgress'
-import MuscleStats from './MuscleStats'
+import HeartRate from './HeartRate'
+import History from './History'
 
 const ITEMS = [
+  { id: 'history',   label: 'History',       desc: 'Past sessions + export',           Icon: List },
   { id: 'routines',  label: 'Routines',      desc: 'Build training plans + schedule',  Icon: ListChecks },
   { id: 'locations', label: 'Locations',     desc: 'Where you train',                  Icon: MapPin },
+  { id: 'heartrate', label: 'Heart Rate',    desc: 'Pair your HR belt & see live BPM', Icon: HeartPulse },
   { id: 'docs',      label: 'Documentation', desc: 'Groups, exercises, muscles',       Icon: BookOpen },
-  { id: 'progress',  label: 'Progress',      desc: 'Per exercise charts',              Icon: TrendingUp },
-  { id: 'muscles',   label: 'Muscles',       desc: 'By session, week, month',          Icon: Activity },
 ]
 
 export default function More({ allData, token, onDataChange }) {
@@ -29,11 +29,11 @@ export default function More({ allData, token, onDataChange }) {
           Back to More
         </button>
         <h2 className="text-white font-bold text-base">{item?.label}</h2>
+        {section === 'history'   && <History allData={allData} token={token} onDataChange={onDataChange} />}
         {section === 'routines'  && <Routines allData={allData} token={token} onDataChange={onDataChange} />}
         {section === 'locations' && <Locations allData={allData} token={token} onDataChange={onDataChange} />}
+        {section === 'heartrate' && <HeartRate />}
         {section === 'docs'      && <Documentation />}
-        {section === 'progress'  && <ExerciseProgress allData={allData} />}
-        {section === 'muscles'   && <MuscleStats allData={allData} />}
       </div>
     )
   }

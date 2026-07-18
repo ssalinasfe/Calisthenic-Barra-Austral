@@ -63,6 +63,10 @@ def session_to_json(s: SessionRow) -> dict:
         'categories':      list(s.categories or []),
         'locationId':      s.location_id,
         'routineId':       s.routine_id,
+        'avgHr':           s.avg_hr,
+        'maxHr':           s.max_hr,
+        'minHr':           s.min_hr,
+        'hrSamples':       list(s.hr_samples or []),
         'photos':          [p.filename for p in s.photos],
         'exercises':       [session_exercise_to_json(se) for se in s.exercises],
     }
@@ -86,6 +90,12 @@ def session_set_to_json(st: SessionSet) -> dict:
         out['weight'] = st.weight
     if st.rest_duration:
         out['restDuration'] = st.rest_duration
+    if st.start_hr is not None:
+        out['startHr'] = st.start_hr
+    if st.avg_hr is not None:
+        out['avgHr'] = st.avg_hr
+    if st.max_hr is not None:
+        out['maxHr'] = st.max_hr
     return out
 
 
@@ -165,6 +175,10 @@ def replace_user_data(db, user: User, payload: dict) -> None:
             categories=list(s.get('categories') or []),
             location_id=s.get('locationId'),
             routine_id=s.get('routineId'),
+            avg_hr=s.get('avgHr'),
+            max_hr=s.get('maxHr'),
+            min_hr=s.get('minHr'),
+            hr_samples=list(s.get('hrSamples') or []),
         )
         db.add(sess)
         for i, ex in enumerate(s.get('exercises') or []):
@@ -185,6 +199,9 @@ def replace_user_data(db, user: User, payload: dict) -> None:
                     reps=st.get('reps'),
                     weight=st.get('weight'),
                     rest_duration=st.get('restDuration'),
+                    start_hr=st.get('startHr'),
+                    avg_hr=st.get('avgHr'),
+                    max_hr=st.get('maxHr'),
                 ))
         for p in s.get('photos') or []:
             if not p:

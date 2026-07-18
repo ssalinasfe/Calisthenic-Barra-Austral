@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { ChevronDown, ChevronUp, Clock, Pencil, Copy, Check, ExternalLink, MapPin, FileText, Image as ImageIcon } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock, Pencil, Copy, Check, ExternalLink, MapPin, FileText, Image as ImageIcon, HeartPulse } from 'lucide-react'
 import { setNotation, fmtDuration, totalReps, sessionCategories } from '../utils'
 import {
-  CATEGORY_LABEL, CATEGORY_PILL, categoryColorStyle,
+  CATEGORY_LABEL, CATEGORY_PILL, comboCategoryStyle,
   isFullBody, groupLabel, FULL_BODY_STYLE,
 } from '../exercises'
 import SessionEditor from './SessionEditor'
@@ -69,7 +69,7 @@ function SessionRow({ session, locations, onEdit }) {
   const pillClass = cats.length === 1 ? (CATEGORY_PILL[cats[0]] || CATEGORY_PILL.Custom) : ''
   const pillStyle = fullBody
     ? FULL_BODY_STYLE
-    : (cats.length > 1 ? categoryColorStyle(cats, 'pill') : undefined)
+    : (cats.length > 1 ? comboCategoryStyle(cats, 'pill') : undefined)
   const location = session.locationId
     ? locations.find(l => l.id === session.locationId)
     : null
@@ -109,6 +109,11 @@ function SessionRow({ session, locations, onEdit }) {
               <span className="text-gray-600 text-xs">{fmtDuration(session.durationSeconds)}</span>
               <span className="text-gray-600 text-xs">{session.exercises.length} ex</span>
               <span className="text-gray-600 text-xs">{repsTotal} reps</span>
+              {session.avgHr != null && (
+                <span className="text-red-400/80 text-xs flex items-center gap-1">
+                  <HeartPulse size={10} />{session.avgHr} bpm
+                </span>
+              )}
               {location && (
                 <span className="text-gray-600 text-xs flex items-center gap-1">
                   <MapPin size={10} />{location.name}

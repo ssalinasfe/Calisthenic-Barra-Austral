@@ -3,24 +3,29 @@ import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
   addMonths, getDay, isToday,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, CalendarDays, ListChecks } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, ListChecks, X } from 'lucide-react'
 import {
-  CATEGORY_LABEL, CATEGORY_FILL, CATEGORY_PILL, categoryColorStyle,
+  CATEGORY_LABEL, CATEGORY_FILL, CATEGORY_PILL, categoryColorStyle, comboCategoryStyle,
   MUSCLE_ORDER, isFullBody, groupLabel, FULL_BODY_STYLE,
 } from '../exercises'
 import { totalReps as sumReps, sessionCategories } from '../utils'
 import { photoUrl } from '../api'
+import SessionSummary from './SessionSummary'
 
 function tallyByDay(sessions) {
-  const map = new Map() // 'yyyy-MM-dd' → { cats, reps, sessions, photo }
+  const map = new Map() // 'yyyy-MM-dd' → { cats, reps, sessions, photo, hasCardio }
   sessions.forEach(s => {
     const day = format(new Date(s.startTime), 'yyyy-MM-dd')
-    if (!map.has(day)) map.set(day, { cats: [], reps: 0, sessions: 0, photo: null })
+    if (!map.has(day)) map.set(day, { cats: [], reps: 0, sessions: 0, photo: null, hasCardio: false })
     const entry = map.get(day)
     entry.sessions++
     entry.reps += (s.exercises || []).reduce((sum, ex) => sum + sumReps(ex.sets), 0)
     // Union of each session's selected (or inferred) muscle groups.
     sessionCategories(s).forEach(c => { if (!entry.cats.includes(c)) entry.cats.push(c) })
+    // Track cardio separately — it only colors a day when it's the ONLY thing done.
+    if ((s.categories || []).includes('Remo') || (s.exercises || []).some(ex => ex.category === 'Remo')) {
+      entry.hasCardio = true
+    }
     if (!entry.photo && s.photos && s.photos.length > 0) {
       entry.photo = s.photos[0]
     }
@@ -32,11 +37,22 @@ function tallyByDay(sessions) {
 
 export default function Calendar({ allData, token }) {
   const [refDate, setRefDate] = useState(new Date())
+  const [selectedSession, setSelectedSession] = useState(null)
+  const [dayPicker, setDayPicker] = useState(null)   // { label, sessions } when a day has >1 session
 
   const dayMap = useMemo(
     () => tallyByDay(allData.sessions || []),
     [allData]
   )
+
+  function openDay(day) {
+    const key = format(day, 'yyyy-MM-dd')
+    const ss = (allData.sessions || [])
+      .filter(s => format(new Date(s.startTime), 'yyyy-MM-dd') === key)
+      .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+    if (ss.length === 1) setSelectedSession(ss[0])
+    else if (ss.length > 1) setDayPicker({ label: format(day, "EEEE d MMM"), sessions: ss })
+  }
 
   const routines = allData.routines || []
   // Build map: weekday (Mon=0..Sun=6) → routine name
@@ -124,7 +140,10 @@ export default function Calendar({ allData, token }) {
             // Only completed sessions color a day. A day that spans several
             // categories gets their blended color; the label reads "Full Body"
             // when it covers Push + Pull + Legs.
-            const cats = data ? data.cats : []
+            // Cardio only shows when it's the ONLY thing trained that day (no muscle
+            // groups); otherwise it stays hidden as before.
+            let cats = data ? data.cats : []
+            if (cats.length === 0 && data?.hasCardio) cats = ['Remo']
             const label = groupLabel(cats)
             const fullBody = isFullBody(cats)
             const single = cats.length === 1
@@ -137,7 +156,7 @@ export default function Calendar({ allData, token }) {
             } else if (single) {
               fillClass = CATEGORY_FILL[cats[0]] || CATEGORY_FILL.Custom
             } else {
-              fillStyle = categoryColorStyle(cats, 'fill')
+              fillStyle = comboCategoryStyle(cats, 'fill')
             }
             const today = isToday(day)
             const totalReps = data ? data.reps : 0
@@ -154,7 +173,8 @@ export default function Calendar({ allData, token }) {
                 key={key}
                 title={titleParts.join(' · ')}
                 style={fillStyle}
-                className={`aspect-square border rounded-lg flex flex-col items-center justify-center px-1 relative overflow-hidden ${fillClass} ${today ? 'ring-1 ring-white/40' : ''}`}
+                onClick={data ? () => openDay(day) : undefined}
+                className={`aspect-square border rounded-lg flex flex-col items-center justify-center px-1 relative overflow-hidden ${fillClass} ${today ? 'ring-1 ring-white/40' : ''} ${data ? 'cursor-pointer hover:ring-1 hover:ring-cyan-400/60 transition-all' : ''}`}
               >
                 {photo && token && (
                   <>
@@ -242,6 +262,56 @@ export default function Calendar({ allData, token }) {
           ))}
         </div>
       </div>
+
+      {/* Day with multiple sessions → pick one */}
+      {dayPicker && (
+        <div
+          className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4 animate-fadeIn"
+          onClick={() => setDayPicker(null)}
+        >
+          <div
+            className="bg-gray-950 border border-white/10 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+              <h2 className="text-white font-bold text-sm capitalize">{dayPicker.label}</h2>
+              <button onClick={() => setDayPicker(null)} className="text-gray-600 hover:text-white p-1 rounded-lg">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-3 space-y-2">
+              <p className="text-gray-500 text-xs px-1">{dayPicker.sessions.length} sessions this day</p>
+              {dayPicker.sessions.map(s => {
+                const reps = (s.exercises || []).reduce((sum, ex) => sum + sumReps(ex.sets), 0)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => { setSelectedSession(s); setDayPicker(null) }}
+                    className="w-full bg-white/5 border border-white/8 rounded-xl px-4 py-3 flex justify-between items-center hover:bg-white/8 transition-colors text-left"
+                  >
+                    <div>
+                      <p className="text-white text-sm font-medium">{format(new Date(s.startTime), 'HH:mm')}{s.title ? ` · ${s.title}` : ''}</p>
+                      <p className="text-gray-600 text-xs mt-0.5">{(s.exercises || []).length} exercises · {reps} reps</p>
+                    </div>
+                    <ChevronRight size={16} className="text-gray-600" />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full session detail (same view + charts as the post-session summary) */}
+      {selectedSession && (
+        <SessionSummary
+          session={selectedSession}
+          allData={allData}
+          token={token}
+          heading={selectedSession.title || 'Session'}
+          onClose={() => setSelectedSession(null)}
+        />
+      )}
     </div>
   )
 }

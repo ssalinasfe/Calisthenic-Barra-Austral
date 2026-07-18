@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { fetchData, saveData } from '../api'
+import { useHeartRate, hrStore } from '../heartRate'
 import ExerciseSearch from './ExerciseSearch'
 import ExerciseCard from './ExerciseCard'
 import SessionSummary from './SessionSummary'
 import Settings from './Settings'
-import History from './History'
 import Calendar from './Calendar'
+import MuscleStats from './MuscleStats'
+import ExerciseProgress from './ExerciseProgress'
 import More from './More'
 import RoutineChooser from './RoutineChooser'
 import FinishSessionModal from './FinishSessionModal'
-import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, List, CalendarDays, MoreHorizontal, MapPin, Trash2 } from 'lucide-react'
+import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, CalendarDays, MoreHorizontal, MapPin, Trash2, HeartPulse, HeartOff, Activity, TrendingUp } from 'lucide-react'
 import { format } from 'date-fns'
 import { totalReps as sumReps } from '../utils'
 import { migrateData } from '../exercises'
@@ -45,8 +47,9 @@ function fmtElapsed(secs) {
 
 const NAV = [
   { id: 'train',    label: 'Train',    Icon: PersonStanding },
-  { id: 'history',  label: 'History',  Icon: List },
   { id: 'calendar', label: 'Calendar', Icon: CalendarDays },
+  { id: 'muscles',  label: 'Muscles',  Icon: Activity },
+  { id: 'progress', label: 'Progress', Icon: TrendingUp },
   { id: 'more',     label: 'More',     Icon: MoreHorizontal },
 ]
 
@@ -70,6 +73,23 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
   const [error, setError] = useState('')
 
   const elapsed = useElapsed(sessionStart, status === 'active')
+
+  // Heart rate: while a session is active, collect a downsampled bpm series from
+  // the (optionally) connected BLE belt. Summary stats get saved with the session.
+  const hr = useHeartRate()
+  const hrSamplesRef = useRef([])
+
+  // On load, silently bring the remembered belt back (the connection can't survive
+  // a page reload, but we can reconnect without prompting).
+  useEffect(() => { hrStore.autoConnect() }, [])
+  useEffect(() => {
+    if (status !== 'active' || !sessionStart) return
+    if (hr.status !== 'connected' || hr.bpm == null || !hr.lastAt) return
+    const t = Math.max(0, Math.round((hr.lastAt - new Date(sessionStart).getTime()) / 1000))
+    const arr = hrSamplesRef.current
+    const last = arr[arr.length - 1]
+    if (!last || t - last.t >= 5) arr.push({ t, bpm: hr.bpm })   // ~1 point / 5s
+  }, [hr.lastAt, hr.status, hr.bpm, status, sessionStart])
 
   useEffect(() => {
     fetchData(token)
@@ -129,6 +149,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
   const todayWeekday = (new Date().getDay() + 6) % 7  // Mon=0..Sun=6
 
   function startSession(routine, categories) {
+    hrSamplesRef.current = []
     setSessionStart(new Date().toISOString())
     setActiveRoutineId(routine?.id || null)
     setActiveRoutineName(routine?.name || '')
@@ -159,6 +180,15 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
 
   async function finalizeSession(photos) {
     const now = new Date().toISOString()
+    const hrSamples = hrSamplesRef.current
+    const hrFields = {}
+    if (hrSamples.length) {
+      const bpms = hrSamples.map(s => s.bpm)
+      hrFields.avgHr = Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length)
+      hrFields.maxHr = Math.max(...bpms)
+      hrFields.minHr = Math.min(...bpms)
+      hrFields.hrSamples = hrSamples
+    }
     const session = {
       id: sessionStart,
       title: activeRoutineName || '',
@@ -178,6 +208,9 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
               reps: s.reps ?? 0,
               ...(s.weight != null ? { weight: s.weight } : {}),
               ...(s.restDuration ? { restDuration: s.restDuration } : {}),
+              ...(s.startHr != null ? { startHr: s.startHr } : {}),
+              ...(s.avgHr != null ? { avgHr: s.avgHr } : {}),
+              ...(s.maxHr != null ? { maxHr: s.maxHr } : {}),
             })),
         }))
         .filter(ex => ex.sets.length > 0),
@@ -186,6 +219,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
       photos: photos || [],
       locationId: activeLocationId || null,
       routineId: activeRoutineId || null,
+      ...hrFields,
     }
 
     setStatus('saving')
@@ -203,6 +237,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
       setActiveRoutineName('')
       setActiveCategories([])
       setActiveLocationId('')
+      hrSamplesRef.current = []
       localStorage.removeItem(ACTIVE_SESSION_KEY)
     } catch {
       setError('Failed to save the session')
@@ -213,6 +248,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
 
   function discardSession() {
     if (!window.confirm('Discard this session? Your in-progress sets will be lost.')) return
+    hrSamplesRef.current = []
     localStorage.removeItem(ACTIVE_SESSION_KEY)
     setStatus('idle')
     setSessionStart(null)
@@ -252,6 +288,32 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
             )}
             <span className="text-gray-600 text-xs ml-2 hidden sm:inline">{today}</span>
           </div>
+
+          {/* Heart-rate belt status — always visible once a belt is paired */}
+          {hr.paired && (
+            hr.status === 'connected' ? (
+              <div
+                className="flex items-center gap-1 text-red-400 font-bold text-base font-mono tracking-wider"
+                title={`Belt connected — ${hr.deviceName || 'HR belt'}`}
+              >
+                <HeartPulse size={15} className="animate-pulse" />
+                {hr.bpm != null ? hr.bpm : '··'}
+              </div>
+            ) : hr.status === 'connecting' ? (
+              <div className="flex items-center gap-1 text-amber-400/80 text-xs" title="Reconnecting to belt…">
+                <HeartPulse size={15} className="animate-pulse" />
+                <span className="hidden sm:inline">…</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => hrStore.connect()}
+                className="flex items-center gap-1 text-gray-600 hover:text-red-400 transition-colors"
+                title="Belt disconnected — tap to reconnect"
+              >
+                <HeartOff size={15} />
+              </button>
+            )
+          )}
 
           {status === 'active' && (
             <div className="font-mono text-cyan-400 font-bold text-base tracking-wider">
@@ -436,13 +498,14 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
           </>
         )}
 
-        {/* ── HISTORY VIEW ── */}
-        {view === 'history' && (
-          <History allData={allData} token={token} onDataChange={setAllData} />
-        )}
-
         {/* ── CALENDAR VIEW ── */}
         {view === 'calendar' && <Calendar allData={allData} token={token} />}
+
+        {/* ── MUSCLES VIEW ── */}
+        {view === 'muscles' && <MuscleStats allData={allData} />}
+
+        {/* ── PROGRESS VIEW ── */}
+        {view === 'progress' && <ExerciseProgress allData={allData} />}
 
         {/* ── MORE VIEW ── */}
         {view === 'more' && (

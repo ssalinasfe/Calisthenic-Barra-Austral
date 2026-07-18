@@ -3,7 +3,7 @@ import {
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   addWeeks, addMonths, isWithinInterval,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, Activity } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Activity } from 'lucide-react'
 import { MUSCLES_BY_NAME, MUSCLE_ES, CATEGORY_LABEL, CATEGORY_PILL, CATEGORY_BAR } from '../exercises'
 import { totalReps as sumReps } from '../utils'
 
@@ -42,10 +42,13 @@ function aggregate(sessions) {
       byCategory[cat].sets += setCount
 
       getMusclesForExercise(ex).forEach(m => {
-        if (!byMuscle[m]) byMuscle[m] = { reps: 0, sets: 0, exercises: new Set(), category: cat }
+        if (!byMuscle[m]) byMuscle[m] = { reps: 0, sets: 0, exercises: {}, category: cat }
         byMuscle[m].reps += reps
         byMuscle[m].sets += setCount
-        byMuscle[m].exercises.add(ex.name)
+        const e = byMuscle[m].exercises[ex.name] || { reps: 0, sets: 0 }
+        e.reps += reps
+        e.sets += setCount
+        byMuscle[m].exercises[ex.name] = e
       })
     })
   })
@@ -61,6 +64,7 @@ function aggregate(sessions) {
 }
 
 function PeriodCard({ stats, sessions }) {
+  const [expanded, setExpanded] = useState(null)
   const muscleEntries = Object.entries(stats.byMuscle)
     .sort((a, b) => b[1].reps - a[1].reps)
   const maxMuscleReps = muscleEntries[0]?.[1].reps || 1
@@ -130,19 +134,57 @@ function PeriodCard({ stats, sessions }) {
             const bar = CATEGORY_BAR[data.category] || CATEGORY_BAR.Custom
             const pct = Math.round((data.reps / maxMuscleReps) * 100)
             const muscleEs = MUSCLE_ES[muscle]
+            const exCount = Object.keys(data.exercises).length
+            const open = expanded === muscle
+            const exEntries = Object.entries(data.exercises).sort((a, b) => b[1].reps - a[1].reps)
             return (
               <div key={muscle}>
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="text-white text-sm font-semibold">{muscle}</span>
-                  {muscleEs && muscleEs !== muscle && (
-                    <span className="text-gray-500 text-xs">{muscleEs}</span>
-                  )}
-                  <span className="text-gray-600 text-xs">· {data.exercises.size} {data.exercises.size === 1 ? 'exercise' : 'exercises'}</span>
-                  <span className="text-cyan-400 font-mono text-xs ml-auto font-semibold">{data.reps} reps</span>
-                </div>
-                <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                  <div className={`h-full ${bar}`} style={{ width: `${pct}%` }} />
-                </div>
+                <button
+                  onClick={() => setExpanded(open ? null : muscle)}
+                  className="w-full text-left group"
+                >
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-white text-sm font-semibold">{muscle}</span>
+                    {muscleEs && muscleEs !== muscle && (
+                      <span className="text-gray-500 text-xs">{muscleEs}</span>
+                    )}
+                    <span className="text-gray-600 text-xs">· {exCount} {exCount === 1 ? 'exercise' : 'exercises'}</span>
+                    <span className="text-cyan-400 font-mono text-xs ml-auto font-semibold">{data.reps} reps</span>
+                    {open
+                      ? <ChevronUp size={13} className="text-gray-600 group-hover:text-white transition-colors" />
+                      : <ChevronDown size={13} className="text-gray-600 group-hover:text-white transition-colors" />}
+                  </div>
+                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <div className={`h-full ${bar}`} style={{ width: `${pct}%` }} />
+                  </div>
+                </button>
+
+                {open && (
+                  <div className="mt-2 mb-1.5 ml-1 pl-3 border-l border-white/10 space-y-2 animate-fadeIn">
+                    <p className="text-gray-600 text-[10px]">
+                      % en negrita = del músculo · % gris = del total del periodo
+                    </p>
+                    {exEntries.map(([name, e]) => {
+                      const share = data.reps > 0 ? Math.round((e.reps / data.reps) * 100) : 0
+                      const periodShare = stats.totalReps > 0 ? Math.round((e.reps / stats.totalReps) * 100) : 0
+                      return (
+                        <div key={name}>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-300 text-xs truncate flex-1">{name}</span>
+                            <span className="text-gray-500 text-xs font-mono">{e.reps} reps</span>
+                            <span className="text-gray-300 text-xs font-mono w-9 text-right font-semibold">{share}%</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <div className="h-1 bg-white/5 rounded-full overflow-hidden flex-1">
+                              <div className={`h-full ${bar} opacity-70`} style={{ width: `${share}%` }} />
+                            </div>
+                            <span className="text-gray-600 text-[10px] font-mono whitespace-nowrap">{periodShare}% del periodo</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )
           })}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, X, Square, ChevronDown, ChevronUp, Pause, Play, StopCircle, Pencil, Search, Check } from 'lucide-react'
+import { Plus, X, Square, ChevronDown, ChevronUp, Pause, Play, StopCircle, Pencil, Search, Check, HeartPulse } from 'lucide-react'
 import { EXERCISES, CATEGORY_LABEL } from '../exercises'
+import { useHeartRate } from '../heartRate'
 
 function fmt(secs) {
   const m = Math.floor(secs / 60)
@@ -11,6 +12,8 @@ function fmt(secs) {
 // ── Active set timer ──────────────────────────────────────────────────────────
 function ActiveSet({ set, index, onStop }) {
   const [elapsed, setElapsed] = useState(0)
+  const hr = useHeartRate()
+  const hrAccRef = useRef([])   // bpm readings collected during this set
 
   useEffect(() => {
     const start = new Date(set.startedAt).getTime()
@@ -18,14 +21,39 @@ function ActiveSet({ set, index, onStop }) {
     return () => clearInterval(id)
   }, [set.startedAt])
 
+  // Accumulate live bpm while this set is running (full resolution, ~1/s).
+  useEffect(() => {
+    if (hr.status === 'connected' && hr.bpm != null) hrAccRef.current.push(hr.bpm)
+  }, [hr.lastAt, hr.status, hr.bpm])
+
+  function stop() {
+    const bpms = hrAccRef.current
+    const hrStats = bpms.length
+      ? {
+          startHr: bpms[0],   // pulse at the moment "Start" was pressed
+          avgHr: Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length),
+          maxHr: Math.max(...bpms),
+        }
+      : null
+    onStop(elapsed, hrStats)
+  }
+
+  const live = hr.status === 'connected' && hr.bpm != null
+
   return (
     <div className="flex items-center gap-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl px-3 py-2.5 animate-fadeIn">
       <span className="text-gray-600 text-xs w-5 text-center font-mono">{index + 1}</span>
       <span className="text-cyan-300 font-mono text-xl font-bold flex-1 tracking-wider">
         {fmt(elapsed)}
       </span>
+      {live && (
+        <span className="flex items-center gap-1 text-red-400 font-mono text-base font-bold">
+          <HeartPulse size={14} className="animate-pulse" />
+          {hr.bpm}
+        </span>
+      )}
       <button
-        onClick={() => onStop(elapsed)}
+        onClick={stop}
         className="flex items-center gap-1.5 bg-red-500 hover:bg-red-400 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
       >
         <Square size={12} fill="white" />
@@ -128,6 +156,14 @@ function CompletedSet({ set, index, onUpdateReps, onUpdateWeight, onDelete }) {
         />
         <span className="text-gray-600 text-xs">kg</span>
       </div>
+      {set.avgHr != null && (
+        <span
+          title={`Heart rate — ${set.startHr != null ? `start ${set.startHr} · ` : ''}avg ${set.avgHr}${set.maxHr != null ? ` · max ${set.maxHr}` : ''} bpm`}
+          className="text-red-400/80 text-xs font-mono flex items-center gap-0.5 flex-shrink-0"
+        >
+          <HeartPulse size={11} />{set.avgHr}
+        </span>
+      )}
       {set.restDuration > 0 && (
         <span className="text-amber-500/60 text-xs font-mono">{fmt(set.restDuration)}</span>
       )}
@@ -266,8 +302,9 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
     onChange(updated)
   }
 
-  function stopSet(idx, duration) {
-    const newSets = exercise.sets.map((s, i) => i === idx ? { ...s, duration, reps: s.reps ?? 1 } : s)
+  function stopSet(idx, duration, hrStats) {
+    const newSets = exercise.sets.map((s, i) =>
+      i === idx ? { ...s, duration, reps: s.reps ?? 1, ...(hrStats || {}) } : s)
     onChange({ ...exercise, sets: newSets })
     setActiveIdx(null)
     // Start rest timer
@@ -360,7 +397,7 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
         <div className="px-4 pb-4 space-y-2">
           {exercise.sets.map((set, idx) =>
             set.duration === null ? (
-              <ActiveSet key={set.id} set={set} index={idx} onStop={dur => stopSet(idx, dur)} />
+              <ActiveSet key={set.id} set={set} index={idx} onStop={(dur, hrStats) => stopSet(idx, dur, hrStats)} />
             ) : (
               <CompletedSet
                 key={set.id}
