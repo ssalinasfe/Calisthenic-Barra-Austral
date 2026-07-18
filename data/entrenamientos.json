@@ -1,0 +1,92 @@
+{
+  "sessions": [
+    {
+      "id": "2026-05-01T14:10:09.216Z",
+      "date": "2026-05-01",
+      "startTime": "2026-05-01T14:10:09.216Z",
+      "endTime": "2026-05-01T14:56:38.747Z",
+      "durationSeconds": 2789,
+      "exercises": [
+        {
+          "name": "Aperturas superiores con banda",
+          "category": "Pull",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:10:45.738Z",
+              "duration": 156,
+              "reps": 10
+            },
+            {
+              "startedAt": "2026-05-01T14:15:18.513Z",
+              "duration": 85,
+              "reps": 6
+            }
+          ]
+        },
+        {
+          "name": "Aperturas horizontales con banda",
+          "category": "Pull",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:18:28.527Z",
+              "duration": 145,
+              "reps": 7
+            }
+          ]
+        },
+        {
+          "name": "Remo inclinado con barra",
+          "category": "Pull",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:26:46.579Z",
+              "duration": 130,
+              "reps": 5
+            },
+            {
+              "startedAt": "2026-05-01T14:33:35.783Z",
+              "duration": 110,
+              "reps": 5
+            },
+            {
+              "startedAt": "2026-05-01T14:38:31.268Z",
+              "duration": 52,
+              "reps": 3
+            }
+          ]
+        },
+        {
+          "name": "Máquina de remos",
+          "category": "Remo",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:50:04.049Z",
+              "duration": 568,
+              "reps": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2026-05-04T16:27:36.314Z",
+      "date": "2026-05-04",
+      "startTime": "2026-05-04T16:27:36.314Z",
+      "endTime": "2026-05-04T17:06:20.432Z",
+      "durationSeconds": 2324,
+      "exercises": [
+        {
+          "name": "Máquina de remos",
+          "category": "Remo",
+          "sets": [
+            {
+              "startedAt": "2026-05-04T16:27:46.032Z",
+              "duration": 2312,
+              "reps": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

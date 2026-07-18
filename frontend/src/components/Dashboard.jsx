@@ -1,0 +1,514 @@
+import { useState, useEffect } from 'react'
+import { fetchData, saveData } from '../api'
+import ExerciseSearch from './ExerciseSearch'
+import ExerciseCard from './ExerciseCard'
+import SessionSummary from './SessionSummary'
+import Settings from './Settings'
+import History from './History'
+import Calendar from './Calendar'
+import More from './More'
+import RoutineChooser from './RoutineChooser'
+import FinishSessionModal from './FinishSessionModal'
+import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, List, CalendarDays, MoreHorizontal, MapPin, Trash2 } from 'lucide-react'
+import { format } from 'date-fns'
+import { totalReps as sumReps } from '../utils'
+import { migrateData } from '../exercises'
+
+const ACTIVE_SESSION_KEY = 'gym_active_session'
+
+function loadActiveSession() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+
+function useElapsed(startTime, active) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!active || !startTime) { setElapsed(0); return }
+    const tick = () => setElapsed(Math.floor((Date.now() - new Date(startTime).getTime()) / 1000))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startTime, active])
+  return elapsed
+}
+
+function fmtElapsed(secs) {
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  const s = secs % 60
+  if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+const NAV = [
+  { id: 'train',    label: 'Train',    Icon: PersonStanding },
+  { id: 'history',  label: 'History',  Icon: List },
+  { id: 'calendar', label: 'Calendar', Icon: CalendarDays },
+  { id: 'more',     label: 'More',     Icon: MoreHorizontal },
+]
+
+export default function Dashboard({ token, username, onLock, bgImage, onBgChange }) {
+  const [allData, setAllData] = useState({ sessions: [], locations: [], routines: [] })
+  const [view, setView] = useState('train')
+  const [status, setStatus] = useState(() => loadActiveSession() ? 'active' : 'idle')   // idle | active | saving
+  const [sessionStart, setSessionStart] = useState(() => loadActiveSession()?.sessionStart ?? null)
+  const [exercises, setExercises] = useState(() => loadActiveSession()?.exercises ?? [])
+  const [activeRoutineId, setActiveRoutineId] = useState(() => loadActiveSession()?.activeRoutineId ?? null)
+  const [activeRoutineName, setActiveRoutineName] = useState(() => loadActiveSession()?.activeRoutineName ?? '')
+  const [activeCategories, setActiveCategories] = useState(() => loadActiveSession()?.activeCategories ?? [])
+  const [activeLocationId, setActiveLocationId] = useState(() => loadActiveSession()?.activeLocationId ?? '')
+  const [navWarning, setNavWarning] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
+  const [lastSession, setLastSession] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showChooser, setShowChooser] = useState(false)
+  const [showFinish, setShowFinish] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const elapsed = useElapsed(sessionStart, status === 'active')
+
+  useEffect(() => {
+    fetchData(token)
+      .then(raw => {
+        const { data, changed } = migrateData(raw)
+        setAllData(data)
+        setLoading(false)
+        if (changed) {
+          saveData(token, data).catch(() => { /* best-effort */ })
+        }
+      })
+      .catch(() => { setError('Could not connect to the server'); setLoading(false) })
+  }, [token])
+
+  // Persist active session so it survives reloads / accidental back navigation
+  useEffect(() => {
+    if (status === 'active' && sessionStart) {
+      try {
+        localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify({
+          sessionStart,
+          exercises,
+          activeRoutineId,
+          activeRoutineName,
+          activeCategories,
+          activeLocationId,
+        }))
+      } catch { /* quota / disabled — best effort */ }
+    }
+  }, [status, sessionStart, exercises, activeRoutineId, activeRoutineName, activeCategories, activeLocationId])
+
+  // Warn before closing/reloading the tab during an active session
+  useEffect(() => {
+    if (status !== 'active') return
+    const handler = e => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [status])
+
+  // Block accidental browser-back during an active session
+  useEffect(() => {
+    if (status !== 'active') return
+    window.history.pushState({ gymActiveSession: true }, '')
+    let timer
+    const onPop = () => {
+      window.history.pushState({ gymActiveSession: true }, '')
+      setNavWarning(true)
+      clearTimeout(timer)
+      timer = setTimeout(() => setNavWarning(false), 2500)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('popstate', onPop)
+    }
+  }, [status])
+
+  const todayWeekday = (new Date().getDay() + 6) % 7  // Mon=0..Sun=6
+
+  function startSession(routine, categories) {
+    setSessionStart(new Date().toISOString())
+    setActiveRoutineId(routine?.id || null)
+    setActiveRoutineName(routine?.name || '')
+    setActiveCategories(categories || routine?.categories || [])
+    setActiveLocationId('')
+    if (routine && routine.exercises?.length) {
+      setExercises(routine.exercises.map((ex, i) => ({
+        ...ex,
+        instanceId: `${Date.now()}_${i}`,
+        sets: [],
+      })))
+    } else {
+      setExercises([])
+    }
+    setStatus('active')
+    setError('')
+    setView('train')
+  }
+
+  function requestFinish() {
+    const completed = exercises.some(ex => ex.sets.some(s => s.duration !== null))
+    if (!completed) {
+      setError('Add at least one completed set before finishing')
+      return
+    }
+    setShowFinish(true)
+  }
+
+  async function finalizeSession(photos) {
+    const now = new Date().toISOString()
+    const session = {
+      id: sessionStart,
+      title: activeRoutineName || '',
+      date: format(new Date(sessionStart), 'yyyy-MM-dd'),
+      startTime: sessionStart,
+      endTime: now,
+      durationSeconds: Math.floor((new Date(now) - new Date(sessionStart)) / 1000),
+      exercises: exercises
+        .map(ex => ({
+          name: ex.name,
+          category: ex.category,
+          sets: ex.sets
+            .filter(s => s.duration !== null)
+            .map(s => ({
+              startedAt: s.startedAt,
+              duration: s.duration,
+              reps: s.reps ?? 0,
+              ...(s.weight != null ? { weight: s.weight } : {}),
+              ...(s.restDuration ? { restDuration: s.restDuration } : {}),
+            })),
+        }))
+        .filter(ex => ex.sets.length > 0),
+      notes: '',
+      categories: activeCategories || [],
+      photos: photos || [],
+      locationId: activeLocationId || null,
+      routineId: activeRoutineId || null,
+    }
+
+    setStatus('saving')
+    const newData = { ...allData, sessions: [...(allData.sessions || []), session] }
+    try {
+      await saveData(token, newData)
+      setAllData(newData)
+      setLastSession(session)
+      setShowFinish(false)
+      setShowSummary(true)
+      setStatus('idle')
+      setSessionStart(null)
+      setExercises([])
+      setActiveRoutineId(null)
+      setActiveRoutineName('')
+      setActiveCategories([])
+      setActiveLocationId('')
+      localStorage.removeItem(ACTIVE_SESSION_KEY)
+    } catch {
+      setError('Failed to save the session')
+      setStatus('active')
+      setShowFinish(false)
+    }
+  }
+
+  function discardSession() {
+    if (!window.confirm('Discard this session? Your in-progress sets will be lost.')) return
+    localStorage.removeItem(ACTIVE_SESSION_KEY)
+    setStatus('idle')
+    setSessionStart(null)
+    setExercises([])
+    setActiveRoutineId(null)
+    setActiveRoutineName('')
+    setActiveCategories([])
+    setActiveLocationId('')
+    setError('')
+  }
+
+  const today = format(new Date(), "EEEE d MMM")
+  const totalSessions = allData.sessions?.length ?? 0
+  const locations = allData.locations || []
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-600 text-sm animate-pulse">Loading...</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen pb-24">
+
+      {/* Top header */}
+      <header className="sticky top-0 z-40 bg-gray-950/80 backdrop-blur-md border-b border-white/8">
+        <div className="max-w-xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-black border border-white/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <img src="/logo.png" alt="" className="w-full h-full object-contain" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-white font-semibold text-sm">Barra Austral</span>
+            {username && (
+              <span className="text-cyan-400 text-xs ml-2">@{username}</span>
+            )}
+            <span className="text-gray-600 text-xs ml-2 hidden sm:inline">{today}</span>
+          </div>
+
+          {status === 'active' && (
+            <div className="font-mono text-cyan-400 font-bold text-base tracking-wider">
+              {fmtElapsed(elapsed)}
+            </div>
+          )}
+
+          <button onClick={() => setShowSettings(true)} className="text-gray-600 hover:text-white p-2 rounded-lg transition-colors">
+            <SettingsIcon size={17} />
+          </button>
+          <button onClick={onLock} className="text-gray-600 hover:text-red-400 p-2 rounded-lg transition-colors">
+            <LogOut size={17} />
+          </button>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="max-w-xl mx-auto px-4 pt-6 space-y-4">
+        {error && (
+          <div className="bg-red-500/15 border border-red-500/30 rounded-2xl px-4 py-3 text-red-300 text-sm animate-fadeIn">
+            {error}
+          </div>
+        )}
+
+        {navWarning && (
+          <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl px-4 py-3 text-amber-200 text-sm animate-fadeIn">
+            Session in progress — finish or discard before leaving.
+          </div>
+        )}
+
+        {/* ── TRAIN VIEW ── */}
+        {view === 'train' && (
+          <>
+            {status === 'idle' && (
+              <div className="text-center py-14 animate-fadeIn">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-cyan-500/10 border border-cyan-500/20 mb-6">
+                  <PersonStanding className="text-cyan-400" size={36} />
+                </div>
+                <h2 className="text-white text-xl font-bold mb-2">Ready to train?</h2>
+                <p className="text-gray-600 text-sm mb-6">
+                  {totalSessions > 0
+                    ? `${totalSessions} ${totalSessions === 1 ? 'session recorded' : 'sessions recorded'}`
+                    : 'No sessions recorded yet'}
+                </p>
+
+                <button
+                  onClick={() => setShowChooser(true)}
+                  className="inline-flex items-center gap-2.5 bg-cyan-500 hover:bg-cyan-400 text-white font-semibold px-8 py-4 rounded-2xl text-base transition-all hover:scale-105 shadow-lg shadow-cyan-500/20"
+                >
+                  <Play size={18} fill="white" />
+                  Start session
+                </button>
+
+                {totalSessions > 0 && (
+                  <div className="mt-10 text-left">
+                    <p className="text-gray-700 text-xs font-medium mb-3">Recent sessions</p>
+                    <div className="space-y-2">
+                      {[...allData.sessions].reverse().slice(0, 3).map(s => {
+                        const reps = (s.exercises || []).reduce(
+                          (sum, ex) => sum + sumReps(ex.sets), 0
+                        )
+                        return (
+                          <div key={s.id} className="bg-white/4 border border-white/8 rounded-xl px-4 py-3 flex justify-between items-center">
+                            <div>
+                              <p className="text-white text-sm font-medium">
+                                {format(new Date(s.startTime), "EEEE d MMM · HH:mm")}
+                              </p>
+                              <p className="text-gray-600 text-xs mt-0.5">
+                                {(s.exercises || []).length} exercises · {reps} reps
+                              </p>
+                            </div>
+                            <span className="text-gray-600 text-xs font-mono">
+                              {Math.floor((s.durationSeconds || 0) / 60)}m
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(status === 'active' || status === 'saving') && (
+              <div className="space-y-4 animate-fadeIn">
+                {/* Active session location selector */}
+                {locations.length > 0 && (
+                  <div className="bg-white/3 border border-white/8 rounded-2xl px-4 py-3 flex items-center gap-2">
+                    <MapPin size={14} className="text-gray-500 flex-shrink-0" />
+                    <select
+                      value={activeLocationId}
+                      onChange={e => setActiveLocationId(e.target.value)}
+                      className="flex-1 bg-transparent text-white text-sm outline-none"
+                    >
+                      <option value="" className="bg-gray-900">— No location —</option>
+                      {locations.map(l => (
+                        <option key={l.id} value={l.id} className="bg-gray-900">{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <ExerciseSearch
+                  onAdd={ex => {
+                    setExercises(prev => [...prev, { ...ex, instanceId: Date.now() + Math.random(), sets: [] }])
+                  }}
+                  addedExercises={exercises}
+                />
+
+                {exercises.length === 0 && (
+                  <div className="text-center py-12 text-gray-700 text-sm">
+                    Search for an exercise to start
+                  </div>
+                )}
+
+                {(() => {
+                  // Group adjacent exercises with the same supersetGroup into a wrapper
+                  const blocks = []
+                  let cur = null
+                  exercises.forEach((ex, idx) => {
+                    const g = ex.supersetGroup
+                    if (g != null && cur && cur.group === g) {
+                      cur.items.push({ ex, idx })
+                    } else {
+                      if (cur) blocks.push(cur)
+                      cur = { group: g, items: [{ ex, idx }] }
+                    }
+                  })
+                  if (cur) blocks.push(cur)
+
+                  const renderCard = ({ ex, idx }) => (
+                    <ExerciseCard
+                      key={ex.instanceId ?? idx}
+                      exercise={ex}
+                      onChange={updated =>
+                        setExercises(prev => prev.map((e, i) => (i === idx ? updated : e)))
+                      }
+                      onRemove={() =>
+                        setExercises(prev => prev.filter((_, i) => i !== idx))
+                      }
+                    />
+                  )
+
+                  return blocks.map((b, bi) => {
+                    if (b.group != null && b.items.length > 1) {
+                      return (
+                        <div key={`ss_${bi}`} className="border-2 border-purple-500/40 bg-purple-500/5 rounded-3xl p-2 space-y-2">
+                          <div className="flex items-center gap-2 px-2 pt-1">
+                            <span className="text-[10px] uppercase tracking-wide font-bold text-purple-300">Superset</span>
+                            <span className="text-purple-200/70 text-xs">do all back-to-back</span>
+                          </div>
+                          {b.items.map(renderCard)}
+                        </div>
+                      )
+                    }
+                    return b.items.map(renderCard)
+                  })
+                })()}
+
+                {exercises.length > 0 && (
+                  <button
+                    onClick={requestFinish}
+                    disabled={status === 'saving'}
+                    className="w-full flex items-center justify-center gap-2.5 bg-green-500 hover:bg-green-400 disabled:opacity-50 text-white font-semibold py-4 rounded-2xl transition-colors mt-2 shadow-lg shadow-green-500/15"
+                  >
+                    <Square size={16} fill="white" />
+                    {status === 'saving' ? 'Saving...' : 'Finish session'}
+                  </button>
+                )}
+
+                {status === 'active' && (
+                  <button
+                    onClick={discardSession}
+                    className="w-full flex items-center justify-center gap-2 text-gray-600 hover:text-red-400 text-xs font-medium py-2 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    Discard session
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── HISTORY VIEW ── */}
+        {view === 'history' && (
+          <History allData={allData} token={token} onDataChange={setAllData} />
+        )}
+
+        {/* ── CALENDAR VIEW ── */}
+        {view === 'calendar' && <Calendar allData={allData} token={token} />}
+
+        {/* ── MORE VIEW ── */}
+        {view === 'more' && (
+          <More allData={allData} token={token} onDataChange={setAllData} />
+        )}
+      </main>
+
+      {/* Bottom navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-gray-950/90 backdrop-blur-md border-t border-white/8">
+        <div className="max-w-xl mx-auto flex">
+          {NAV.map(({ id, label, Icon }) => {
+            const active = view === id
+            const isTrainActive = id === 'train' && status === 'active'
+            return (
+              <button
+                key={id}
+                onClick={() => setView(id)}
+                className={`flex-1 flex flex-col items-center py-3 gap-1 transition-colors ${
+                  active ? 'text-cyan-400' : 'text-gray-600 hover:text-gray-400'
+                }`}
+              >
+                <div className="relative">
+                  <Icon size={20} />
+                  {isTrainActive && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-400 rounded-full" />
+                  )}
+                </div>
+                <span className="text-xs font-medium">{label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </nav>
+
+      {showChooser && (
+        <RoutineChooser
+          routines={allData.routines || []}
+          todayWeekday={todayWeekday}
+          onChoose={(routine, categories) => { setShowChooser(false); startSession(routine, categories) }}
+          onClose={() => setShowChooser(false)}
+        />
+      )}
+
+      {showFinish && (
+        <FinishSessionModal
+          token={token}
+          onCancel={() => setShowFinish(false)}
+          onConfirm={finalizeSession}
+        />
+      )}
+
+      {showSummary && lastSession && (
+        <SessionSummary
+          session={lastSession}
+          allData={allData}
+          onClose={() => setShowSummary(false)}
+        />
+      )}
+
+      {showSettings && (
+        <Settings
+          bgImage={bgImage}
+          onBgChange={onBgChange}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </div>
+  )
+}

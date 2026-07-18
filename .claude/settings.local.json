@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /home/cerati/apps/appGym/frontend/public)",
+      "Bash(curl -L -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36\" \"https://i.pinimg.com/736x/89/49/4a/89494a3e09a7564f4ee45cc1731bf212.jpg\" -o /home/cerati/apps/appGym/frontend/public/wallpaper-default.jpg --max-time 20 -w \"HTTP %{http_code} Size: %{size_download}\")",
+      "WebSearch",
+      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' https://static.zerochan.net/Zero.Two.full.2936608.jpg -o zt-1.jpg -w 'zt-1: %{http_code} %{size_download}B\\\\n' --max-time 30)",
+      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' https://static.zerochan.net/Zero.Two.1024.3653330.webp -o zt-2.webp -w 'zt-2: %{http_code} %{size_download}B\\\\n' --max-time 30)",
+      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' 'https://images.steamusercontent.com/ugc/1844783540884735862/646F2E4FFBBC46DD869B35C09F40C8AC666EE55C/?imw=5000&imh=5000&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=false' -o zt-3.jpg -w 'zt-3: %{http_code} %{size_download}B\\\\n' --max-time 30)",
+      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' 'https://preview.redd.it/zero-two-darling-in-the-franxx-v0-f1qotrxlb3gf1.jpeg?width=640&crop=smart&auto=webp&s=a6679ffd11ab004b6f082d64a3a82c4b9e27062c' -o zt-4.jpg -w 'zt-4: %{http_code} %{size_download}B\\\\n' --max-time 30)",
+      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' https://dthezntil550i.cloudfront.net/u3/latest/u32008180926596450016417516/1280_960/d2536450-ffe9-43d2-942e-a2ea4b69e092.png -o zt-5.png -w 'zt-5: %{http_code} %{size_download}B\\\\n' --max-time 30)"
+    ]
+  }
+}

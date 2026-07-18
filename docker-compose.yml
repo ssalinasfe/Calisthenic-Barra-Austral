@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: calistia-db
+    environment:
+      - POSTGRES_USER=calistia
+      - POSTGRES_PASSWORD=calistia_pw
+      - POSTGRES_DB=calistia
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - gymnet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calistia -d calistia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: gymtracker-backend
+    environment:
+      - API_TOKEN=${API_TOKEN:-cambiar_esta_password}
+      - DATABASE_URL=postgresql://calistia:calistia_pw@db:5432/calistia
+      - PHOTO_DIR=/app/data/photos
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - gymnet
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build: ./frontend
+    container_name: gymtracker-frontend
+    ports:
+      - "${PORT:-3000}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - gymnet
+
+networks:
+  gymnet:
+    driver: bridge

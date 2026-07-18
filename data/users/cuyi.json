@@ -1,0 +1,960 @@
+{
+  "sessions": [
+    {
+      "id": "2026-05-01T14:10:09.216Z",
+      "date": "2026-05-01",
+      "startTime": "2026-05-01T14:10:09.216Z",
+      "endTime": "2026-05-01T14:56:38.747Z",
+      "durationSeconds": 2789,
+      "exercises": [
+        {
+          "name": "Banded Overhead Pull-aparts",
+          "category": "Pull",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:10:45.738Z",
+              "duration": 156,
+              "reps": 10
+            },
+            {
+              "startedAt": "2026-05-01T14:15:18.513Z",
+              "duration": 85,
+              "reps": 6
+            }
+          ]
+        },
+        {
+          "name": "Banded Horizontal Pull-aparts",
+          "category": "Pull",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:18:28.527Z",
+              "duration": 145,
+              "reps": 7
+            }
+          ]
+        },
+        {
+          "name": "Bent Over Barbell Rows",
+          "category": "Pull",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:26:46.579Z",
+              "duration": 130,
+              "reps": 5
+            },
+            {
+              "startedAt": "2026-05-01T14:33:35.783Z",
+              "duration": 110,
+              "reps": 5
+            },
+            {
+              "startedAt": "2026-05-01T14:38:31.268Z",
+              "duration": 52,
+              "reps": 3
+            }
+          ]
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "sets": [
+            {
+              "startedAt": "2026-05-01T14:50:04.049Z",
+              "duration": 568,
+              "reps": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2026-05-04T16:27:36.314Z",
+      "date": "2026-05-04",
+      "startTime": "2026-05-04T16:27:36.314Z",
+      "endTime": "2026-05-04T17:06:20.432Z",
+      "durationSeconds": 2324,
+      "exercises": [
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "sets": [
+            {
+              "startedAt": "2026-05-04T16:27:46.032Z",
+              "duration": 2312,
+              "reps": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "locations": [],
+  "routines": [
+    {
+      "id": "rt_cuyi_push_l1",
+      "name": "Push-ups Level 1",
+      "description": "Push-ups routine, Level 1",
+      "exercises": [
+        {
+          "name": "Negative Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "4000",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Scapula Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 4,
+          "restSeconds": 120
+        },
+        {
+          "name": "Plank Hold",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": null,
+          "targetSets": 4,
+          "restSeconds": 120,
+          "timeSeconds": 60
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": [
+        0,
+        3
+      ]
+    },
+    {
+      "id": "rt_cuyi_push_l2",
+      "name": "Push-ups Level 2",
+      "description": "Push-ups routine, Level 2",
+      "exercises": [
+        {
+          "name": "Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Negative Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "4000",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Scapula Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 4,
+          "restSeconds": 180
+        },
+        {
+          "name": "Plank Hold",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": null,
+          "targetSets": 4,
+          "restSeconds": 180,
+          "timeSeconds": 60
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_push_l3",
+      "name": "Push-ups Level 3",
+      "description": "Push-ups routine, Level 3",
+      "exercises": [
+        {
+          "name": "Diamond Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 15,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Tricep Extensions",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Wide Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 6,
+          "targetSets": 3,
+          "restSeconds": 90
+        },
+        {
+          "name": "Negative Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "4000",
+          "targetReps": 4,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_push_l4",
+      "name": "Push-ups Level 4",
+      "description": "Push-ups routine, Level 4",
+      "exercises": [
+        {
+          "name": "Explosive Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "1010",
+          "targetReps": 6,
+          "targetSets": 2,
+          "restSeconds": 120
+        },
+        {
+          "name": "Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Plank Hold",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": null,
+          "targetSets": 3,
+          "restSeconds": 180,
+          "timeSeconds": 60
+        },
+        {
+          "name": "Archer Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 2,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Diamond Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 10,
+          "targetSets": 2,
+          "restSeconds": 120
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_push_l5",
+      "name": "Push-ups Level 5",
+      "description": "Push-ups routine, Level 5",
+      "exercises": [
+        {
+          "name": "Archer Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 4,
+          "targetSets": 4,
+          "restSeconds": 180
+        },
+        {
+          "name": "Diamond Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 5,
+          "targetSets": 4,
+          "restSeconds": 180
+        },
+        {
+          "name": "One-arm Push-up",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 1,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 2,
+          "tempo": "2010",
+          "targetReps": 6,
+          "targetSets": 5,
+          "restSeconds": 120
+        },
+        {
+          "name": "Wide Push-ups",
+          "category": "Push",
+          "type": "reps",
+          "supersetGroup": 2,
+          "tempo": "2010",
+          "targetReps": 5,
+          "targetSets": 5,
+          "restSeconds": 180
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_pull_l1",
+      "name": "Pull-ups Level 1",
+      "description": "Pull-ups routine, Level 1",
+      "exercises": [
+        {
+          "name": "Bent Over Barbell Rows",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 15,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Passive Hang",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": null,
+          "targetSets": 3,
+          "restSeconds": 180,
+          "timeSeconds": 60
+        },
+        {
+          "name": "Treadmill",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 1800,
+          "resistance": 4,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": [
+        1,
+        4
+      ]
+    },
+    {
+      "id": "rt_cuyi_pull_l2",
+      "name": "Pull-ups Level 2",
+      "description": "Pull-ups routine, Level 2",
+      "exercises": [
+        {
+          "name": "Australian Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Scapula Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Treadmill",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 1800,
+          "resistance": 4,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_pull_l3",
+      "name": "Pull-ups Level 3",
+      "description": "Pull-ups routine, Level 3",
+      "exercises": [
+        {
+          "name": "Band Assisted Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 6,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Australian Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 4,
+          "restSeconds": 180
+        },
+        {
+          "name": "Scapula Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 4,
+          "restSeconds": 180
+        },
+        {
+          "name": "Treadmill",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 1800,
+          "resistance": 4,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_pull_l4",
+      "name": "Pull-ups Level 4",
+      "description": "Pull-ups routine, Level 4",
+      "exercises": [
+        {
+          "name": "Negative Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "10000",
+          "targetReps": 1,
+          "targetSets": 5,
+          "restSeconds": 60
+        },
+        {
+          "name": "Band Assisted Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 6,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Australian Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Scapula Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 5,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Passive Hang",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": null,
+          "targetSets": 3,
+          "restSeconds": 180,
+          "timeSeconds": 30
+        },
+        {
+          "name": "Treadmill",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 1800,
+          "resistance": 4,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_pull_l5",
+      "name": "Pull-ups Level 5",
+      "description": "Pull-ups routine, Level 5",
+      "exercises": [
+        {
+          "name": "Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 3,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Band Assisted Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Australian Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Scapula Pull-ups",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 5,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Passive Hang",
+          "category": "Pull",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": null,
+          "targetSets": 3,
+          "restSeconds": 180,
+          "timeSeconds": 30
+        },
+        {
+          "name": "Treadmill",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 1800,
+          "resistance": 4,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_squat_l1",
+      "name": "Squats Level 1",
+      "description": "Squats routine, Level 1",
+      "exercises": [
+        {
+          "name": "Narrow Stance Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Deep Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 12,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Bodyweight Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 15,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": [
+        2,
+        5
+      ]
+    },
+    {
+      "id": "rt_cuyi_squat_l2",
+      "name": "Squats Level 2",
+      "description": "Squats routine, Level 2",
+      "exercises": [
+        {
+          "name": "Bulgarian Split Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "3010",
+          "targetReps": 6,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Narrow Stance Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Deep Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "3010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_squat_l3",
+      "name": "Squats Level 3",
+      "description": "Squats routine, Level 3",
+      "exercises": [
+        {
+          "name": "Cossack Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 6,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Bulgarian Split Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Narrow Stance Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Deep Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "3010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 180
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_squat_l4",
+      "name": "Squats Level 4",
+      "description": "Squats routine, Level 4",
+      "exercises": [
+        {
+          "name": "Pistol Squats (assisted)",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "3010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Cossack Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 100
+        },
+        {
+          "name": "Bulgarian Split Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 100
+        },
+        {
+          "name": "Deep Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "3010",
+          "targetReps": 12,
+          "targetSets": 3,
+          "restSeconds": 100
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    },
+    {
+      "id": "rt_cuyi_squat_l5",
+      "name": "Squats Level 5",
+      "description": "Squats routine, Level 5",
+      "exercises": [
+        {
+          "name": "Pistol Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2020",
+          "targetReps": 3,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Pistol Squats (assisted)",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "3010",
+          "targetReps": 6,
+          "targetSets": 2,
+          "restSeconds": 120
+        },
+        {
+          "name": "Cossack Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": null,
+          "tempo": "2010",
+          "targetReps": 8,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Bulgarian Split Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "2010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Deep Squats",
+          "category": "Piernas",
+          "type": "reps",
+          "supersetGroup": 1,
+          "tempo": "3010",
+          "targetReps": 10,
+          "targetSets": 3,
+          "restSeconds": 120
+        },
+        {
+          "name": "Rowing Machine",
+          "category": "Remo",
+          "type": "machine",
+          "supersetGroup": null,
+          "timeSeconds": 600,
+          "resistance": 5,
+          "targetSets": 1,
+          "restSeconds": 0
+        }
+      ],
+      "weekdays": []
+    }
+  ]
+}
