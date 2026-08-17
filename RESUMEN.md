@@ -829,3 +829,111 @@ docker exec barra-austral-db pg_dump -U calistia -d calistia > backup_calistia_$
     desconectada": afirmar la causa sería inventar. Si alguna vez se quiere la
     causa real, hay que registrar los eventos de `heartRate.js` (`connected` /
     `disconnected`) dentro de la sesión. · `SessionSummary.jsx`
+- [2026-08-14] **Log de eventos de sesión (`session.events`).** Pedido del usuario:
+  guardar los timestamps reales en vez de inferirlos. **Es un log interno, NO se
+  muestra en la UI.** Nuevo `frontend/src/sessionLog.js`; `t` en segundos desde el
+  inicio, mismo eje que `hrSamples[].t`.
+  - **Vocabulario**, elegido para cubrir las 4 (y solo 4) causas posibles de que
+    falte pulso: `belt-off`/`belt-on` (banda cae), `hidden`/`visible`
+    (navegador en segundo plano, timers estrangulados), `reload` (se remontó el
+    Dashboard y se perdió el estado en memoria), `stall-start`/`stall-end` (banda
+    dice "conectada" pero dejó de emitir — **no lo detecta `hr.status`**, hay
+    watchdog de 20s sobre `hr.lastAt`). Contexto extra: `auto-on`/`auto-off`,
+    `wake-on`/`wake-off`.
+  - Eventos repetidos se colapsan (`hr.status` pasa por `connecting` al volver,
+    y visibilitychange dispara de más).
+  - **El log se persiste en el blob de sesión activa** de `localStorage`: sin eso
+    una recarga lo borraría, justo el evento que más interesa registrar.
+    `sessionLog.restore()` lo retoma y anota el `reload`.
+  - Backend: columna `sessions.events JSON` **sin DEFAULT a propósito** (NULL =
+    no procesada por el backfill, `[]` = procesada sin nada que anotar).
+    `backfill_session_events()` en `seeds.py` reconstruye pares
+    `belt-off`/`belt-on` desde los huecos >20s de `hr_samples` de las sesiones
+    viejas, **marcados `inferred: True`** — un hueco prueba que no hubo dato,
+    nunca por qué, y nada río abajo debe confundir la inferencia con una medición.
+  - `SessionSummary` deriva las ventanas ciegas del log (`ENDS` empareja
+    inicio/fin, cierra en `maxT` lo que quedó abierto, descarta parpadeos <5s) y
+    **mantiene la regla de huecos como red de seguridad**: el log puede no tener
+    evento para una causa, pero un hueco en las muestras es falta de dato por
+    definición.
+  - Verificado: 116 sesiones backfilleadas (0 quedaron NULL), la del 2026-08-17
+    con 48 eventos = los 24 huecos medidos antes; la API los devuelve; el
+    derivador del gráfico saca 24 ventanas, todas cerradas, 0 `belt-off` sin
+    pareja, y produce los mismos 24 cortes.
+    · `sessionLog.js` (nuevo), `Dashboard.jsx`, `db.py`, `serializers.py`,
+    `seeds.py`, `SessionSummary.jsx`
+- [2026-08-14] **Arreglada la pérdida de pulso al recargar.** `hrSamplesRef` vivía
+  solo en memoria: **recargar a mitad de sesión borraba todo el pulso acumulado**
+  y la sesión se guardaba solo con lo posterior. Probablemente explique varios de
+  los huecos históricos mejor que la banda.
+  - **Clave propia `gym_active_hr`**, escrita en el mismo efecto que agrega la
+    muestra (~cada 5s). NO se metió en el blob `gym_active_session` a propósito:
+    ese solo se reescribe cuando cambian los sets, así que una recarga durante un
+    descanso largo habría perdido minutos igual. Mismo razonamiento para el log,
+    que ahora se persiste solo en `gym_session_log` en cada `log()`.
+  - Se restaura en el efecto de montaje, junto con `sessionLog.restore()`.
+  - **`startSession()` borra `gym_active_hr`**: sin banda conectada nada lo
+    sobrescribiría y una recarga resucitaría el pulso de la sesión anterior
+    dentro de la nueva. Igual en `discardSession()` y al finalizar.
+  - `sessionLog.stop()` **rebindea** `events = []` en vez de mutar, para que el
+    objeto de sesión que `finalizeSession()` acaba de leer conserve su copia.
+  - Verificado con el `sessionLog.js` real y un `localStorage` falso en node:
+    los eventos sobreviven la recarga, el `reload` queda anotado con su `t`
+    correcto, los repetidos colapsan, `stop()` limpia la clave sin tocar la copia
+    ya entregada, y tras `stop()` no se registra nada más.
+    · `sessionLog.js`, `Dashboard.jsx`
+- [2026-08-14] **Botón "View logs" para ver el log de eventos.** Nuevo
+  `SessionLogModal.jsx`, compartido por las dos vistas: en la **sesión activa**
+  (bajo "Finish session", lee `sessionLog.events()` en vivo) y en el **resumen de
+  sesión** (bajo "Export CSV", lee `session.events` guardado).
+  - Cada fila: tiempo desde el inicio (`mm:ss`), **hora de reloj** derivada de
+    `startTime` (para cruzar con lo que pasó de verdad en el gimnasio), y la
+    etiqueta en inglés. Los `inferred` del backfill salen marcados como tales.
+  - Color por tono: rojo lo que corta datos (`belt-off`, `hidden`,
+    `stall-start`), verde la recuperación, ámbar `reload`/`wake-off`, gris el
+    contexto.
+  - **Al agregar un tipo de evento nuevo hay que agregarlo al mapa `EVENTS` del
+    modal**, si no se muestra el slug crudo. Verificado con un chequeo cruzado:
+    los 11 tipos emitidos por `sessionLog.js`/`Dashboard.jsx` coinciden
+    exactamente con los 11 etiquetados, sin faltantes ni sobrantes.
+  - El modal en vivo no se re-renderiza si llega un evento con él abierto (lee un
+    arreglo de módulo, no estado de React). Se cierra y se abre y ya. ·
+    `SessionLogModal.jsx` (nuevo), `Dashboard.jsx`, `SessionSummary.jsx`
+- [2026-08-14] **Fuera las líneas punteadas amarillas de la zona quema-grasa.**
+  Quedan solo como banda sombreada (`ReferenceArea`, opacidad .08). Motivo: desde
+  que el trazo de pulso usa punteado para el descanso, dos estilos punteados en
+  el mismo gráfico compiten. Se fueron con ellas las etiquetas 112/131 (estaban
+  en el `label` de cada `ReferenceLine`); los valores siguen en `FAT_BURN_ZONE` y
+  en el desglose de % en zona. Import de `ReferenceLine` eliminado, sin usos
+  residuales. · `SessionSummary.jsx`
+- [2026-08-14] **% en zona quema-grasa: ponderado por tiempo + cobertura.**
+  El usuario preguntó si el cálculo consideraba los huecos. **No los consideraba**:
+  contaba muestras asumiendo "cada muestra ≈ tiempo igual".
+  - Medido antes de tocar nada: contar muestras da 29/61/10 y ponderar por tiempo
+    da 30/60/10. **Un punto de diferencia** — dentro de los tramos medidos las
+    muestras SÍ están parejas cada 5s, así que la aritmética no era el problema.
+  - **El problema real era de encuadre**: ese 61% era de la mitad medida, mostrado
+    como si fuera de la sesión. Y lo que falta **no es aleatorio**: en la sesión
+    del 17-ago la cobertura fue **32% en trabajo vs 59% en descanso** (la banda se
+    cae al doble durante el esfuerzo: movimiento, sudor). La sesión fue 35%
+    trabajo / 64% descanso pero lo medido fue 22%/77%, así que "en zona" y
+    "arriba" salían **subestimados**.
+  - Ahora `hrZone` pondera por `dt` de cada intervalo y **descarta los > HR_GAP_S**
+    (no los reparte), y devuelve `coveragePct` contra `session.durationSeconds`
+    (no contra la última muestra: si la banda murió antes del final, ese tiempo
+    también está sin medir). Se muestra "· of the N% of the session the belt
+    measured" cuando la cobertura baja de 98%.
+  - **La ponderación se REVIRTIÓ** (pedido del usuario) tras medirla contra las 5
+    sesiones: cambia **0 puntos en 3 de 5** y 1–2 en las otras dos, porque entre
+    el 93% y el 100% de los intervalos miden exactamente 5s y con intervalos
+    iguales contar y ponderar son la misma operación. Vuelve a contar muestras:
+    un voto por lectura. **La cobertura sí se quedó** — era la parte que
+    importaba.
+  - Si algún día el muestreo deja de ser regular (la banda peor: la sesión del
+    14-ago ya tiene solo 80% de intervalos de 5s y ahí la ponderación daba −2),
+    reconsiderar. Las fórmulas quedaron explicadas en el hilo con el usuario.
+  - Verificado con el `useMemo` real extraído del .jsx contra las 5 sesiones con
+    pulso: los porcentajes suman 100–101 (redondeo de 3 valores independientes,
+    esperado). **Cobertura muy variable**: 86%, 89%, 77%, **25%**, 50% — la del
+    14-ago con 25% tiene un "34% en zona" prácticamente sin sentido, y ahora se
+    ve. · `SessionSummary.jsx`

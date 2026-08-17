@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, ComposedChart, Scatter,
-  ReferenceLine, ReferenceArea,
+  ReferenceArea,
 } from 'recharts'
-import { X, Download, CheckCircle, Clock, Layers, Zap, HeartPulse, ChevronDown, ChevronUp, Maximize2 } from 'lucide-react'
+import { X, Download, CheckCircle, Clock, Layers, Zap, HeartPulse, ChevronDown, ChevronUp, Maximize2, ScrollText } from 'lucide-react'
 import { format } from 'date-fns'
 import { setNotation, fmtDuration } from '../utils'
 import { photoUrl } from '../api'
+import SessionLogModal from './SessionLogModal'
 
 // Same columns as the backend's /api/export/csv, so both CSV paths match.
 function exportCSV(allData) {
@@ -93,12 +94,10 @@ function HrComposedChart({ chart, width, height }) {
         axisLine={false} tickLine={false} width={40}
       />
       <Tooltip content={<HrTooltip />} />
-      {/* Ideal fat-burning zone */}
+      {/* Ideal fat-burning zone: the shading alone marks it. Its edges used to
+          be drawn as dashed yellow lines, dropped once the trace itself started
+          using dashes for rest — two dashed styles in one chart just compete. */}
       <ReferenceArea y1={FAT_BURN_ZONE.low} y2={FAT_BURN_ZONE.high} fill="#fbbf24" fillOpacity={0.08} />
-      <ReferenceLine y={FAT_BURN_ZONE.low} stroke="#fbbf24" strokeOpacity={0.7} strokeDasharray="5 4"
-        label={{ value: FAT_BURN_ZONE.low, position: 'insideBottomRight', fill: '#fbbf24', fontSize: 10 }} />
-      <ReferenceLine y={FAT_BURN_ZONE.high} stroke="#fbbf24" strokeOpacity={0.7} strokeDasharray="5 4"
-        label={{ value: FAT_BURN_ZONE.high, position: 'insideTopRight', fill: '#fbbf24', fontSize: 10 }} />
       <Line data={chart.work} dataKey="bpm" stroke="#f87171" strokeWidth={2.5} dot={false}
         activeDot={{ r: 5, strokeWidth: 0 }} connectNulls={false} isAnimationActive={false} />
       <Line data={chart.rest} dataKey="bpm" stroke="#f87171" strokeOpacity={0.65} strokeWidth={2}
@@ -207,6 +206,7 @@ function ExerciseDetailCard({ ex, color }) {
 
 export default function SessionSummary({ session, allData, onClose, token, heading = 'Session complete' }) {
   const [hrExpanded, setHrExpanded] = useState(false)
+  const [showLog, setShowLog] = useState(false)
   const chartData = useMemo(() => {
     const pastSessions = (allData.sessions || []).filter(s => s.id !== session.id)
     return session.exercises.map((ex, i) => {
@@ -283,9 +283,28 @@ export default function SessionSummary({ session, allData, onClose, token, headi
     // in a sample-aligned array can't work: a lone rest segment between two work
     // segments needs both its endpoints in the solid line, which would draw it
     // twice — the dashes then sit on top of a solid stroke and hide it.
-    // Segments bridging a belt dropout belong to neither line: they get dropped
-    // by both, which leaves the hole visible instead of inventing a reading.
-    const isGap = i => samples[i + 1].t - samples[i].t > HR_GAP_S
+    // Stretches the session log says had no data: the belt was down, the page
+    // was in the background with its timers throttled, or the belt was silent.
+    // (sessionLog.js). Everything else in the log is context, not a hole.
+    const ENDS = { 'belt-off': 'belt-on', hidden: 'visible', 'stall-start': 'stall-end' }
+    const blind = []
+    for (const e of session.events || []) {
+      const open = blind[blind.length - 1]
+      if (open && open.to == null && ENDS[open.type] === e.type) open.to = e.t
+      else if (ENDS[e.type] && (!open || open.to != null)) blind.push({ type: e.type, from: e.t, to: null })
+    }
+    // Ignore blips shorter than one sample interval, and close whatever was
+    // still open when the session ended.
+    const dark = blind
+      .map(b => ({ ...b, to: b.to ?? maxT }))
+      .filter(b => b.to - b.from >= 5)
+
+    // A segment is dropped by BOTH lines when nothing was measured across it, so
+    // the hole stays visible instead of a straight line inventing the reading.
+    // The sample-gap rule stays as the safety net: the log can miss a cause it
+    // has no event for, but a hole in the samples is missing data by definition.
+    const isGap = i => samples[i + 1].t - samples[i].t > HR_GAP_S ||
+      dark.some(d => d.from < samples[i + 1].t && d.to > samples[i].t)
 
     const lineFor = wantRest => {
       const out = []
@@ -307,8 +326,14 @@ export default function SessionSummary({ session, allData, onClose, token, headi
     return { samples, maxT, series, work, rest, hasRest: rests.length > 0, gaps }
   }, [session])
 
-  // Time distribution vs the fat-burning zone, from the HR samples (each sample ≈
-  // equal time). Below / inside / above the 112–131 band.
+  // Distribution vs the fat-burning zone: below / inside / above 112–131.
+  // One vote per reading. Weighting each reading by the seconds it covers was
+  // tried and reverted: readings land every 5s, so the two come out the same
+  // (identical in 3 of 5 recorded sessions, 1–2 points apart in the others).
+  //
+  // `coveragePct` is the part that matters. These are shares of the time the
+  // belt actually measured, and it drops out far more during the hard sets than
+  // during rest, so what survives is biased towards the low end.
   const hrZone = useMemo(() => {
     const s = session.hrSamples || []
     if (s.length < 2) return null
@@ -319,10 +344,21 @@ export default function SessionSummary({ session, allData, onClose, token, headi
       else below++
     })
     const n = s.length
+    // Seconds actually covered by readings: a jump longer than HR_GAP_S is a
+    // hole with no data, not slow sampling.
+    let measured = 0
+    for (let i = 0; i < s.length - 1; i++) {
+      const dt = s[i + 1].t - s[i].t
+      if (dt <= HR_GAP_S) measured += dt
+    }
+    // Against the whole session, not just up to the last reading: a belt that
+    // died early left everything after it unmeasured too.
+    const total = session.durationSeconds || s[s.length - 1].t || measured
     return {
       inPct: Math.round((inside / n) * 100),
       abovePct: Math.round((above / n) * 100),
       belowPct: Math.round((below / n) * 100),
+      coveragePct: Math.round((measured / total) * 100),
     }
   }, [session])
 
@@ -413,7 +449,13 @@ export default function SessionSummary({ session, allData, onClose, token, headi
                     <div style={{ width: `${hrZone.inPct}%` }} className="bg-amber-400/80" />
                     <div style={{ width: `${hrZone.abovePct}%` }} className="bg-red-500/70" />
                   </div>
-                  <p className="text-gray-600 text-[10px] mt-1.5">vs fat-burning zone {FAT_BURN_ZONE.low}–{FAT_BURN_ZONE.high} bpm</p>
+                  <p className="text-gray-600 text-[10px] mt-1.5">
+                    vs fat-burning zone {FAT_BURN_ZONE.low}–{FAT_BURN_ZONE.high} bpm
+                    {/* Without this the split reads as covering the whole session */}
+                    {hrZone.coveragePct < 98 && (
+                      <span className="text-amber-500/60"> · of the {hrZone.coveragePct}% of the session the belt measured</span>
+                    )}
+                  </p>
                 </div>
               )}
             </div>
@@ -510,9 +552,25 @@ export default function SessionSummary({ session, allData, onClose, token, headi
             <Download size={15} />
             Export CSV (compatible with Google Sheets)
           </button>
+
+          <button
+            onClick={() => setShowLog(true)}
+            className="w-full flex items-center justify-center gap-2 text-gray-600 hover:text-white text-xs font-medium py-2 transition-colors"
+          >
+            <ScrollText size={12} />
+            View logs
+          </button>
         </div>
       </div>
     </div>
+
+    {showLog && (
+      <SessionLogModal
+        events={session.events}
+        startTime={session.startTime}
+        onClose={() => setShowLog(false)}
+      />
+    )}
 
     {/* Expanded, scrollable heart-rate chart */}
     {hrExpanded && hrChart && (

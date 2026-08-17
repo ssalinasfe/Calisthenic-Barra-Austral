@@ -3,7 +3,8 @@ import { fetchData, saveData } from '../api'
 import { useHeartRate, hrStore } from '../heartRate'
 import { useRestSound, soundStore } from '../sound'
 import { useAutoRun, autoRunStore } from '../autoRun'
-import { wakeLockStore } from '../wakeLock'
+import { wakeLockStore, useWakeLock } from '../wakeLock'
+import { sessionLog } from '../sessionLog'
 import ExerciseSearch from './ExerciseSearch'
 import ExerciseCard from './ExerciseCard'
 import SessionSummary from './SessionSummary'
@@ -14,12 +15,17 @@ import ExerciseProgress from './ExerciseProgress'
 import More from './More'
 import RoutineChooser from './RoutineChooser'
 import FinishSessionModal from './FinishSessionModal'
-import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, CalendarDays, MoreHorizontal, MapPin, Trash2, HeartPulse, HeartOff, Activity, TrendingUp, Bell, BellOff, Zap } from 'lucide-react'
+import SessionLogModal from './SessionLogModal'
+import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, CalendarDays, MoreHorizontal, MapPin, Trash2, HeartPulse, HeartOff, Activity, TrendingUp, Bell, BellOff, Zap, ScrollText } from 'lucide-react'
 import { format } from 'date-fns'
 import { totalReps as sumReps } from '../utils'
 import { migrateData } from '../exercises'
 
 const ACTIVE_SESSION_KEY = 'gym_active_session'
+// Heart-rate samples get their own key, written as they arrive. Folding them
+// into the blob above would tie them to its save cadence, which only fires when
+// a set changes — a reload during a long rest would drop minutes of readings.
+const ACTIVE_HR_KEY = 'gym_active_hr'
 
 function loadActiveSession() {
   try {
@@ -72,6 +78,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
   const [showSettings, setShowSettings] = useState(false)
   const [showChooser, setShowChooser] = useState(false)
   const [showFinish, setShowFinish] = useState(false)
+  const [showLog, setShowLog] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -83,6 +90,56 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
   const hrSamplesRef = useRef([])
   const restSound = useRestSound()
   const autoRun = useAutoRun()
+  const wakeLock = useWakeLock()
+
+  // Rebuild what only lived in memory when the page reloaded mid-session: the
+  // heart-rate series collected so far, and the diagnostic log (sessionLog.js),
+  // which then records the reload itself.
+  useEffect(() => {
+    const saved = loadActiveSession()
+    if (!saved?.sessionStart) return
+    try {
+      const raw = localStorage.getItem(ACTIVE_HR_KEY)
+      const arr = raw ? JSON.parse(raw) : null
+      if (Array.isArray(arr)) hrSamplesRef.current = arr
+    } catch { /* corrupt entry — start the series over rather than fail */ }
+    sessionLog.restore(saved.sessionStart)
+  }, [])
+
+  // The belt dropping is the most common reason the trace goes blank. Only
+  // logged once a belt is paired, otherwise every beltless session opens with a
+  // permanent "belt-off".
+  useEffect(() => {
+    if (status !== 'active' || !hr.paired) return
+    sessionLog.log(hr.status === 'connected' ? 'belt-on' : 'belt-off')
+  }, [hr.status, hr.paired, status])
+
+  // A belt can report "connected" and quietly stop emitting (out of range, dry
+  // strap). Nothing in hr.status catches that — only the silence does.
+  const stalledRef = useRef(false)
+  useEffect(() => {
+    if (status !== 'active' || hr.status !== 'connected') { stalledRef.current = false; return }
+    const id = setInterval(() => {
+      const silentFor = hr.lastAt ? Date.now() - hr.lastAt : 0
+      if (!stalledRef.current && silentFor > 20000) {
+        stalledRef.current = true
+        sessionLog.log('stall-start')
+      } else if (stalledRef.current && silentFor < 20000) {
+        stalledRef.current = false
+        sessionLog.log('stall-end')
+      }
+    }, 5000)
+    return () => clearInterval(id)
+  }, [status, hr.status, hr.lastAt])
+
+  // Context for reading the trace later: which stretch ran hands-free, and
+  // whether the screen was really being held awake while it did.
+  useEffect(() => {
+    if (status === 'active') sessionLog.log(autoRun.enabled ? 'auto-on' : 'auto-off')
+  }, [autoRun.enabled, status])
+  useEffect(() => {
+    if (status === 'active') sessionLog.log(wakeLock.held ? 'wake-on' : 'wake-off')
+  }, [wakeLock.held, status])
 
   // Auto mode is a per-workout thing: never leave it armed once the session ends.
   useEffect(() => { if (status !== 'active') autoRunStore.setEnabled(false) }, [status])
@@ -101,7 +158,10 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
     const t = Math.max(0, Math.round((hr.lastAt - new Date(sessionStart).getTime()) / 1000))
     const arr = hrSamplesRef.current
     const last = arr[arr.length - 1]
-    if (!last || t - last.t >= 5) arr.push({ t, bpm: hr.bpm })   // ~1 point / 5s
+    if (!last || t - last.t >= 5) {
+      arr.push({ t, bpm: hr.bpm })   // ~1 point / 5s
+      try { localStorage.setItem(ACTIVE_HR_KEY, JSON.stringify(arr)) } catch { /* best effort */ }
+    }
   }, [hr.lastAt, hr.status, hr.bpm, status, sessionStart])
 
   useEffect(() => {
@@ -163,7 +223,12 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
 
   function startSession(routine, categories) {
     hrSamplesRef.current = []
-    setSessionStart(new Date().toISOString())
+    // Drop the previous session's series now: without a belt connected nothing
+    // would overwrite it, and a reload would resurrect it into this session.
+    localStorage.removeItem(ACTIVE_HR_KEY)
+    const startedAt = new Date().toISOString()
+    sessionLog.start(startedAt)
+    setSessionStart(startedAt)
     setActiveRoutineId(routine?.id || null)
     setActiveRoutineName(routine?.name || '')
     setActiveCategories(categories || routine?.categories || [])
@@ -209,6 +274,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
       startTime: sessionStart,
       endTime: now,
       durationSeconds: Math.floor((new Date(now) - new Date(sessionStart)) / 1000),
+      events: sessionLog.events(),
       exercises: exercises
         .map(ex => ({
           name: ex.name,
@@ -251,7 +317,9 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
       setActiveCategories([])
       setActiveLocationId('')
       hrSamplesRef.current = []
+      sessionLog.stop()
       localStorage.removeItem(ACTIVE_SESSION_KEY)
+      localStorage.removeItem(ACTIVE_HR_KEY)
     } catch {
       setError('Failed to save the session')
       setStatus('active')
@@ -262,7 +330,9 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
   function discardSession() {
     if (!window.confirm('Discard this session? Your in-progress sets will be lost.')) return
     hrSamplesRef.current = []
+    sessionLog.stop()
     localStorage.removeItem(ACTIVE_SESSION_KEY)
+    localStorage.removeItem(ACTIVE_HR_KEY)
     setStatus('idle')
     setSessionStart(null)
     setExercises([])
@@ -525,6 +595,16 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
 
                 {status === 'active' && (
                   <button
+                    onClick={() => setShowLog(true)}
+                    className="w-full flex items-center justify-center gap-2 text-gray-600 hover:text-white text-xs font-medium py-2 transition-colors"
+                  >
+                    <ScrollText size={12} />
+                    View logs
+                  </button>
+                )}
+
+                {status === 'active' && (
+                  <button
                     onClick={discardSession}
                     className="w-full flex items-center justify-center gap-2 text-gray-600 hover:text-red-400 text-xs font-medium py-2 transition-colors"
                   >
@@ -585,6 +665,14 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
           todayWeekday={todayWeekday}
           onChoose={(routine, categories) => { setShowChooser(false); startSession(routine, categories) }}
           onClose={() => setShowChooser(false)}
+        />
+      )}
+
+      {showLog && (
+        <SessionLogModal
+          events={sessionLog.events()}
+          startTime={sessionStart}
+          onClose={() => setShowLog(false)}
         />
       )}
 

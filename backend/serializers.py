@@ -67,6 +67,7 @@ def session_to_json(s: SessionRow) -> dict:
         'maxHr':           s.max_hr,
         'minHr':           s.min_hr,
         'hrSamples':       list(s.hr_samples or []),
+        'events':          list(s.events or []),
         'photos':          [p.filename for p in s.photos],
         'exercises':       [session_exercise_to_json(se) for se in s.exercises],
     }
@@ -179,6 +180,7 @@ def replace_user_data(db, user: User, payload: dict) -> None:
             max_hr=s.get('maxHr'),
             min_hr=s.get('minHr'),
             hr_samples=list(s.get('hrSamples') or []),
+            events=list(s.get('events') or []),
         )
         db.add(sess)
         for i, ex in enumerate(s.get('exercises') or []):

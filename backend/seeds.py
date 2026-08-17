@@ -340,6 +340,34 @@ def strip_cardio_from_routine_categories(db) -> None:
         db.commit()
 
 
+# A belt reading arrives every ~5s, so a hole longer than this is a dropout and
+# not jitter. Same threshold the chart uses (HR_GAP_S in SessionSummary.jsx).
+HR_GAP_S = 20
+
+
+def backfill_session_events(db) -> None:
+    """Sessions recorded before the event log existed only have the holes in
+    hr_samples. Reconstruct belt-off/belt-on pairs from those holes so the
+    information isn't lost, tagged inferred=True: a hole proves there was no
+    data, never *why*, and nothing downstream should mistake the guess for a
+    measurement.
+
+    Idempotent via NULL: rows already processed hold a list (possibly empty).
+    """
+    rows = db.query(SessionRow).filter(SessionRow.events.is_(None)).all()
+    if not rows:
+        return
+    for s in rows:
+        events = []
+        samples = s.hr_samples or []
+        for a, b in zip(samples, samples[1:]):
+            if b.get('t', 0) - a.get('t', 0) > HR_GAP_S:
+                events.append({'t': a['t'], 'type': 'belt-off', 'inferred': True})
+                events.append({'t': b['t'], 'type': 'belt-on', 'inferred': True})
+        s.events = events
+    db.commit()
+
+
 def run_seeds() -> None:
     db = SessionLocal()
     try:
@@ -350,5 +378,6 @@ def run_seeds() -> None:
         backfill_titles(db)
         backfill_routine_categories(db)
         strip_cardio_from_routine_categories(db)
+        backfill_session_events(db)
     finally:
         db.close()
