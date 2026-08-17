@@ -11,13 +11,13 @@ function getMusclesForExercise(ex) {
   // Prefer mapping from name (handles renamed/edited exercises)
   if (MUSCLES_BY_NAME[ex.name]) return MUSCLES_BY_NAME[ex.name]
   if (Array.isArray(ex.muscles) && ex.muscles.length > 0) return ex.muscles
-  // Fallback by category
+  // Fallback by category (canonical English muscle keys, like the catalog)
   switch (ex.category) {
-    case 'Push':    return ['Pecho', 'Tríceps', 'Hombros']
-    case 'Pull':    return ['Dorsales', 'Bíceps']
-    case 'Piernas': return ['Cuádriceps', 'Glúteos']
+    case 'Push':    return ['Chest', 'Triceps', 'Shoulders']
+    case 'Pull':    return ['Lats', 'Biceps']
+    case 'Piernas': return ['Quads', 'Glutes']
     case 'Remo':    return ['Heart']
-    default:        return ['Otro']
+    default:        return ['Other']
   }
 }
 

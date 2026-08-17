@@ -21,14 +21,18 @@ function ExercisePicker({ value, onChange }) {
       ).slice(0, 6)
     : []
 
-  function pick(name) {
-    onChange(name)
+  function pick(name, category) {
+    onChange({ name, category })
     setQuery(name)
     setEditing(false)
   }
 
   function confirmCustom() {
-    if (query.trim()) pick(query.trim())
+    const v = query.trim()
+    if (!v) return
+    const known = EXERCISES.find(e => e.name.toLowerCase() === v.toLowerCase())
+    if (known) pick(known.name, known.category)
+    else pick(v, null)   // custom name: keep the exercise's current category
   }
 
   if (!editing) {
@@ -66,7 +70,7 @@ function ExercisePicker({ value, onChange }) {
           {matches.map(ex => (
             <button
               key={ex.id}
-              onMouseDown={() => pick(ex.name)}
+              onMouseDown={() => pick(ex.name, ex.category)}
               className="w-full text-left px-3 py-2 hover:bg-white/8 flex justify-between items-center gap-2"
             >
               <span className="text-white text-xs">{ex.name}</span>
@@ -109,8 +113,6 @@ function SetRow({ set, index, onChange, onDelete }) {
 
   return (
     <div className="flex items-center gap-2 py-1.5">
-      <span className="text-gray-600 text-xs w-5 text-center font-mono flex-shrink-0">{index + 1}</span>
-
       {/* Weight */}
       <input
         type="number"
@@ -123,7 +125,6 @@ function SetRow({ set, index, onChange, onDelete }) {
         step="0.5"
         className="w-14 bg-white/10 text-white rounded-lg px-2 py-1 text-sm text-center outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
       />
-      <span className="text-gray-600 text-xs flex-shrink-0">kg</span>
 
       {/* Duration */}
       <input
@@ -135,7 +136,6 @@ function SetRow({ set, index, onChange, onDelete }) {
         className="w-16 bg-white/8 text-gray-300 font-mono rounded-lg px-2 py-1 text-xs text-center outline-none focus:ring-1 focus:ring-white/20 transition-colors"
         title="Duration (MM:SS or seconds)"
       />
-      <span className="text-gray-700 text-xs flex-shrink-0">s</span>
 
       {/* Reps */}
       <input
@@ -145,7 +145,6 @@ function SetRow({ set, index, onChange, onDelete }) {
         min="0"
         className="w-14 bg-white/10 text-white rounded-lg px-2 py-1 text-sm text-center outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
       />
-      <span className="text-gray-600 text-xs flex-shrink-0">reps</span>
 
       <button
         onClick={onDelete}
@@ -179,8 +178,8 @@ function ExerciseBlock({ exercise, exIdx, onChange, onDelete }) {
     onChange({ ...exercise, sets: newSets })
   }
 
-  function renameExercise(name) {
-    onChange({ ...exercise, name })
+  function renameExercise({ name, category }) {
+    onChange({ ...exercise, name, ...(category ? { category } : {}) })
   }
 
   return (
@@ -197,6 +196,11 @@ function ExerciseBlock({ exercise, exIdx, onChange, onDelete }) {
       </div>
 
       <div className="px-4 py-2">
+        <div className="flex items-center gap-2 pt-1 text-gray-600 text-[10px] uppercase tracking-wider">
+          <span className="w-14 text-center flex-shrink-0">kg</span>
+          <span className="w-16 text-center flex-shrink-0">time</span>
+          <span className="w-14 text-center flex-shrink-0">reps</span>
+        </div>
         {exercise.sets.map((set, setIdx) => (
           <SetRow
             key={setIdx}
@@ -220,7 +224,7 @@ function ExerciseBlock({ exercise, exIdx, onChange, onDelete }) {
 }
 
 // ── Add exercise search bar ───────────────────────────────────────────────────
-function AddExerciseBar({ onAdd, existingNames }) {
+function AddExerciseBar({ onAdd }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const inputRef = useRef(null)
@@ -401,8 +405,6 @@ export default function SessionEditor({ session, allData, token, onSave, onClose
 
   const locations = allData.locations || []
 
-  const existingNames = new Set(exercises.map(e => e.name))
-
   function updateExercise(idx, updated) {
     setExercises(prev => prev.map((e, i) => (i === idx ? updated : e)))
   }
@@ -424,13 +426,23 @@ export default function SessionEditor({ session, allData, token, onSave, onClose
     setError('')
     try {
       const startIso = new Date(startTime).toISOString()
+      // If the start time moved, shift every absolute timestamp (end time and
+      // per-set startedAt) by the same delta so durations and the HR chart
+      // (which positions sets relative to the start) stay consistent.
+      const delta = new Date(startIso).getTime() - new Date(session.startTime).getTime()
+      const shiftIso = iso => iso ? new Date(new Date(iso).getTime() + delta).toISOString() : iso
+      const shiftedExercises = delta === 0 ? exercises : exercises.map(ex => ({
+        ...ex,
+        sets: ex.sets.map(st => st.startedAt ? { ...st, startedAt: shiftIso(st.startedAt) } : st),
+      }))
       const updatedSession = {
         ...session,
         title: title.trim(),
         startTime: startIso,
+        endTime: shiftIso(session.endTime),
         date: startIso.slice(0, 10),
         categories: GROUP_OPTIONS.filter(c => categories.includes(c)),
-        exercises,
+        exercises: shiftedExercises,
         notes: notes.trim(),
         locationId: locationId || null,
         photos,
@@ -608,7 +620,7 @@ export default function SessionEditor({ session, allData, token, onSave, onClose
           ))}
 
           {/* Add exercise */}
-          <AddExerciseBar onAdd={addExercise} existingNames={existingNames} />
+          <AddExerciseBar onAdd={addExercise} />
 
           {/* Delete session */}
           {!confirmDelete ? (

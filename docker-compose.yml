@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: calistia-db
+    container_name: barra-austral-db
     environment:
       - POSTGRES_USER=calistia
       - POSTGRES_PASSWORD=calistia_pw
@@ -19,7 +19,7 @@ services:
 
   backend:
     build: ./backend
-    container_name: gymtracker-backend
+    container_name: barra-austral-backend
     environment:
       - API_TOKEN=${API_TOKEN:-cambiar_esta_password}
       - DATABASE_URL=postgresql://calistia:calistia_pw@db:5432/calistia
@@ -41,7 +41,7 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: gymtracker-frontend
+    container_name: barra-austral-frontend
     ports:
       - "${PORT:-3000}:80"
     depends_on:

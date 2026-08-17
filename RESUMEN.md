@@ -2,7 +2,8 @@
 
 > **AUDIENCIA: el agente (Claude), no el usuario.** El usuario no lee esto.
 > Es la memoria del proyecto para recuperar contexto tras una compactación.
-> No hay git → este archivo es el único historial. **Mantenerlo actualizado:**
+> Ya hay git (desde ~ago-2026), pero la bitácora de abajo sigue siendo el
+> historial con contexto y decisiones. **Mantenerlo actualizado:**
 > al terminar cada cambio que pida el usuario, añadir una entrada a la
 > **Bitácora de cambios (al FINAL del archivo)** y ajustar la sección afectada.
 > Escribir denso y factual, sin relleno.
@@ -15,15 +16,16 @@ Push / Pull / Squats en 5 niveles).
 
 ## 0. Orientación rápida (leer esto primero)
 
-**Ubicación:** `/home/david/apps/appGym` (NO es repo git). Entorno Linux, zsh.
+**Ubicación:** `/home/david/apps/appGym`. Entorno Linux, zsh. **Sí es repo git**
+(remoto `github.com:ssalinasfe/Calisthenic-Barra-Austral`, rama `main`).
 
 **Cómo se ejecuta y se aplica un cambio** (siempre por Docker, no hay dev server):
 ```bash
 docker compose build frontend && docker compose up -d frontend   # tras tocar React
 docker compose build backend  && docker compose up -d backend    # tras tocar Python
 ```
-Contenedores: `gymtracker-frontend`, `gymtracker-backend`, `calistia-db`.
-Acceso a la BD: `docker exec calistia-db psql -U calistia -d calistia -c "..."`.
+Contenedores: `barra-austral-frontend`, `barra-austral-backend`, `barra-austral-db`.
+Acceso a la BD: `docker exec barra-austral-db psql -U calistia -d calistia -c "..."`.
 
 **Archivos que más se tocan:**
 - Color/etiquetas del calendario → `frontend/src/components/Calendar.jsx`.
@@ -35,11 +37,19 @@ Acceso a la BD: `docker exec calistia-db psql -U calistia -d calistia -c "..."`.
 del archivo.**
 
 **Gotchas / decisiones:**
-- No hay git → no hay historial; este MD es la memoria del proyecto.
+- Hay git, pero gran parte del trabajo previo se hizo sin él → este MD sigue
+  siendo la memoria con el "por qué" de cada decisión.
+- **Convención de nombres del catálogo**: si un ejercicio requiere equipo, el
+  nombre lo lleva (equipo primero en inglés: `Kettlebell Swings`, `Barbell Squat`,
+  `Bent Over Barbell Rows`; en español "… con pesa rusa / con barra"). Pedido por
+  el usuario el 14-ago-2026. **OJO: no renombrar ejercicios ya existentes** — las
+  sesiones guardan el nombre como string, renombrar orfana el historial.
+- **Hablarle al usuario siempre en español chileno**, nunca en argentino/rioplatense
+  (nada de "vos"/"probalo"/voseo porteño). App y usuario son chilenos.
 - Todo se guarda como **un blob JSON completo** por usuario (`POST /api/data`
   reemplaza todo). El modelo `routines` tiene columna `categories` (JSON).
 - Cambios directos en BD para `cuyi` se hicieron por script vía
-  `docker exec -i gymtracker-backend python3 < script.py` (usa los modelos).
+  `docker exec -i barra-austral-backend python3 < script.py` (usa los modelos).
 - El backend, al arrancar, corre `run_seeds()` que incluye backfills y
   `strip_cardio_from_routine_categories()` (idempotentes).
 
@@ -49,9 +59,9 @@ del archivo.**
 
 | Capa       | Tecnología                                   | Contenedor            |
 |------------|----------------------------------------------|-----------------------|
-| Frontend   | React 18 + Vite + Tailwind (servido por Nginx)| `gymtracker-frontend` |
-| Backend    | FastAPI (Python) + SQLAlchemy                | `gymtracker-backend`  |
-| Base datos | PostgreSQL 16                                | `calistia-db`         |
+| Frontend   | React 18 + Vite + Tailwind (servido por Nginx)| `barra-austral-frontend` |
+| Backend    | FastAPI (Python) + SQLAlchemy                | `barra-austral-backend`  |
+| Base datos | PostgreSQL 16                                | `barra-austral-db`         |
 
 - Orquestación con `docker-compose.yml`, red interna `gymnet`.
 - El frontend (Nginx) expone el puerto `${PORT}` (por defecto 50666 en `.env`) y
@@ -173,8 +183,11 @@ guardado.
 - **`cuyi`** — contraseña = `API_TOKEN` (`.env`). Tiene las 15 rutinas del PDF
   (Push/Pull/Squats niveles 1–5) más una rutina combinada
   **"Push L3 + Pull L2 + Squat L3"** (categorías Push+Pull+Piernas).
-- **`demo`** — contraseña `1234`. Un año de sesiones generadas + rutinas demo
-  (Push day, Pull day, Leg day, Full body).
+- **`demo`** — contraseña `1234`. **Datos de demostración jun–oct 2025** (76
+  sesiones con progresión realista de calistenia, HR, pesos y 9 fotos; ver
+  bitácora 2026-07-18). Rutinas: Push Day, Pull Day, Leg Day, Full Body.
+  Ubicaciones: Parque Bustamante, Casa, Cerro San Cristóbal. IDs de sesión con
+  prefijo `demo-` (la PK de `sessions` es global; evita colisiones con cuyi).
 
 ---
 
@@ -199,7 +212,7 @@ La app queda disponible en `http://localhost:${PORT}` (por defecto 50666).
 ## 7. Respaldo de la base de datos
 
 ```bash
-docker exec calistia-db pg_dump -U calistia -d calistia > backup_calistia_$(date +%Y%m%d_%H%M%S).sql
+docker exec barra-austral-db pg_dump -U calistia -d calistia > backup_calistia_$(date +%Y%m%d_%H%M%S).sql
 ```
 
 ---
@@ -382,3 +395,437 @@ docker exec calistia-db pg_dump -U calistia -d calistia > backup_calistia_$(date
 - [2026-07-18] Catálogo: nuevo ejercicio **Burpees** (id 33, `category: 'Remo'` = Cardio,
   `muscles: ['Heart']`). El usuario lo clasificó como Cardio (es full-body: push+legs+
   cardio, sin pull, pero eligió tratarlo como acondicionamiento). · `exercises.js`
+- [2026-07-19] **SessionSummary: mejoras de UI móvil.** (1) Gráfico de HR con botón
+  **Expand** (`Maximize2`) → modal fullscreen (`z-[60]`) con el chart en un contenedor
+  `overflow-x-auto` de ancho fijo (`maxT*0.7 px`, mín ancho de pantalla) para
+  desplazar/inspeccionar con el dedo; tooltip al tocar puntos sigue funcionando. Se
+  extrajo `HrComposedChart` reutilizable (inline vía ResponsiveContainer, expandido con
+  width/height fijos). (2) `ExerciseDetailCard` ahora es de **dos filas**: arriba color +
+  nombre completo (ya no se corta) + chevron; abajo los datos (kg, ♥ avg/max, notación,
+  reps) alineados bajo el nombre. Toca la tarjeta para ver la tabla por rep. · `SessionSummary.jsx`
+- [2026-07-19] Gráfico de HR: **zona de quema de grasa** marcada con banda ámbar +
+  dos `ReferenceLine` en `FAT_BURN_ZONE = {low:112, high:131}` (60-70% de FCmáx para
+  edad 33; constante fácil de cambiar). El dominio del YAxis se expande para que la zona
+  siempre sea visible. Aplica tanto al gráfico inline como al expandido (comparten
+  `HrComposedChart`). · `SessionSummary.jsx`
+- [2026-07-19] Banner de HR: dos métricas nuevas de **distribución vs la zona** (desde
+  `session.hrSamples`, cada muestra ≈ tiempo igual): **% en zona** (112–131), **% arriba**
+  (>131) y % abajo, con barra apilada (gris/ámbar/rojo). `hrZone` memo. · `SessionSummary.jsx`
+- [2026-07-18] **Revisión de músculos del catálogo** (pedida por el usuario):
+  Banded Pull-downs `['Lats','Back']` → `['Lats','Mid Back']` (se eliminó el músculo
+  genérico `Back`, era su único uso); Passive Hang → solo `['Forearms']` (en colgado
+  pasivo el dorsal está en estiramiento); Deep Squats → `['Quads','Glutes']` (sin
+  Hamstrings). Se quitaron `Back` y `Calves` de `MUSCLE_ES` (sin ejercicios que los
+  usen; el usuario decidió no añadir ejercicios de pantorrilla). **Backend
+  sincronizado**: se añadieron Jogging (32) y Burpees (33) a `CATALOG` en `seeds.py`
+  (faltaban; solo existían en el frontend) y se replicaron las 3 correcciones de
+  músculos. Verificado en BD tras rebuild. Plank Hold queda en `Push` a propósito
+  (decisión del usuario, viene del PDF como calentamiento). · `exercises.js`, `seeds.py`
+- [2026-07-18] **Regla de cardio aclarada por el usuario**: cardio SÍ es categoría de
+  color, pero solo cuando es lo ÚNICO de la sesión/día; con grupos principales
+  presentes se ignora. (El Calendar ya lo hacía; ver fix de History abajo.)
+- [2026-07-18] **Revisión completa del código → lote de fixes de inconsistencias:**
+  - `MuscleStats.jsx`: el fallback por categoría devolvía músculos en español
+    ('Pecho'…) y 'Otro' → ahora claves canónicas en inglés ('Chest'…, 'Other').
+  - `SessionEditor.jsx`: renombrar un ejercicio ahora actualiza también su
+    `category` cuando se elige del catálogo (antes solo el nombre → grupos mal);
+    cambiar fecha/hora desplaza `endTime` y los `startedAt` de los sets por el
+    mismo delta (antes quedaban desalineados); se quitó la prop muerta
+    `existingNames` de `AddExerciseBar`.
+  - `FinishSessionModal.jsx`: quitar una foto subida, Skip o cancelar ahora borran
+    los archivos del disco (`deletePhoto`); antes quedaban huérfanos.
+  - `Routines.jsx` / `Locations.jsx`: editar ya no reordena (reemplazo in-place,
+    antes `[...others, updated]` mandaba el elemento al final). Tempo `maxLength`
+    4→8 (la semilla Pull L4 usa '10000', 5 dígitos; la BD admite 8).
+  - `History.jsx`: sesión solo-cardio ahora muestra pill "Cardio" cian (misma
+    regla que las celdas del Calendar). Comentario de la regla actualizado en
+    `exercises.js` (`MUSCLE_ORDER`).
+  - `SessionSummary.jsx`: se eliminó el `fmtDuration` duplicado (usa `utils.js`);
+    el CSV del cliente ahora tiene las MISMAS columnas que `/api/export/csv`.
+  - Backend: **borrado `seed_demo.py`** (código muerto, nadie lo importaba y
+    divergía de `seed_demo_data` en `seeds.py`); `_ROUTINE_CATEGORIES` del demo
+    full body ya no incluye 'Remo' (antes lo escribía un backfill y lo borraba
+    otro); `user_data_to_json(user)` sin el param `db` sin uso (4 call sites en
+    `main.py`); quitado `by_name` sin uso en `seeds.py`.
+  - Verificado tras rebuild: login demo, `/api/data` (169 sesiones), export CSV
+    con columnas nuevas, `rt_demo_full_body` = Push/Pull/Piernas. ·
+    `MuscleStats.jsx`, `SessionEditor.jsx`, `FinishSessionModal.jsx`,
+    `Routines.jsx`, `Locations.jsx`, `History.jsx`, `SessionSummary.jsx`,
+    `exercises.js`, `seeds.py`, `serializers.py`, `main.py`, `seed_demo.py` (borrado)
+- [2026-07-18] **Fondos de pantalla arreglados y ampliados.** Causa de los fondos
+  NEGROS: las URLs externas de wallhaven/alphacoders bloquean hotlinking (403 con
+  Referer de otro sitio; con curl sin Referer dan 200) → **regla: todo fondo debe
+  vivir en `frontend/public/`** (local). Cambios:
+  - Descargados los 14 fondos anime externos → `anime-01..14` (anime-02 es `.png`;
+    el `.jpg` de wallhaven no existía). Sin ImageMagick/ffmpeg en el host, así que
+    anime-04 (8MB) y anime-06 (5.6MB) quedaron sin re-comprimir.
+  - **30 fondos nuevos** `fit-01..30.jpg` (Unsplash CDN, `?w=1600&q=75`, estética
+    fitness/gym realista para público general), validados uno a uno (JPEG >40KB).
+  - Se conectaron al selector los **18 `cal-wp*.jpg`** de calistenia que estaban
+    huérfanos en `public/` desde mayo (descargados pero nunca enlazados).
+  - `Settings.jsx`: PRESETS → `SECTIONS` con encabezados (Fitness·Gym 30 /
+    Calistenia 18 / Zero Two 8 / Anime gym 15), grid scrolleable `max-h-96`.
+  - `App.jsx`: `BG_MIGRATION` — si `gym_bg` en localStorage es una de las URLs
+    externas viejas, se migra sola a la copia local al cargar.
+  - `public/` pesa 34MB. Verificado: todos los fondos sirven 200 vía nginx. ·
+    `Settings.jsx`, `App.jsx`, `frontend/public/` (+45 archivos)
+- [2026-07-18] **Fondos v2 — curados a mano, verticales, y sección Chile.** Feedback
+  del usuario sobre la v1: (a) es una app de CALISTENIA, nada de pesas/máquinas;
+  (b) el uso principal es el celu → fondos verticales; (c) app chilena → fondos de
+  Chile; (d) no recortar los apaisados: que el código los adapte.
+  - Flujo de curación: descarga de ~44 candidatas fitness (Unsplash, vertical
+    1080×1920) + 20 de Chile (API de **Wikimedia Commons**, única búsqueda abierta:
+    Unsplash napi y wallhaven no sirvieron) → hojas de contacto con Pillow en un
+    contenedor `python:3.11-slim` efímero → **revisión visual del agente** →
+    seleccionadas 21 fitness (descartadas todas las de barras/mancuernas/máquinas)
+    y 18 de Chile (Villarrica, Torres del Paine, Atacama, Chiloé, Capillas de
+    Mármol, Santiago, Valparaíso…).
+  - **Ojo Docker**: el daemon NO ve `/tmp` (mounts salen vacíos); montar solo rutas
+    bajo `/home`. Pillow en contenedor también re-comprimió anime-04/06 (8MB→295KB).
+  - `fit-01..21.jpg` = verticales curadas (reemplazan el set v1 de 30 apaisadas);
+    `chile-01..18.jpg` = **apaisadas sin recortar** (max 1920px).
+  - **Adaptación por orientación** (`App.jsx` + `index.css`): al cargar el fondo se
+    compara su orientación con la de la pantalla; si difieren → modo `blurfill`:
+    imagen completa centrada (`contain`) sobre una copia desenfocada que rellena
+    los bordes (`.backdrop-blur-fill`). Si coinciden → `cover` normal. Recalcula
+    en `resize`.
+  - `Settings.jsx`: secciones Fitness·Calistenia (21) / Chile (18) / Calistenia
+    wallpapers (18) / Zero Two (8) / Anime gym (15); thumbs `aspect-[3/4]`,
+    `grid-cols-5`. Fuentes de cada imagen en `public/CREDITS-fondos.txt`.
+  - `public/` quedó en 29MB. Verificado: fondos sirven 200, app carga. ·
+    `Settings.jsx`, `App.jsx`, `index.css`, `frontend/public/`
+- [2026-07-18] **Fondos v3 — celu SIEMPRE pantalla completa.** El usuario vio la
+  imagen "chica con bordes negros" en el celu por DOS causas: (1) su celu tenía
+  cacheada la v1 apaisada de `/fit-01.jpg` (mismo nombre, contenido distinto) y el
+  blur-fill la letterboxeó correctamente; (2) la regla v2 aplicaba blur-fill
+  también en el celu para imágenes apaisadas. Reglas nuevas:
+  - **Viewport vertical (celu): siempre `cover`** — llena la pantalla, recorta lo
+    que haga falta, jamás bordes. **Viewport horizontal (PC): blur-fill solo si la
+    imagen es vertical**; apaisadas → cover.
+  - Set fitness **renombrado `fit-*` → `cw-01..21.jpg`** para reventar el caché
+    (lección: al reemplazar contenido de un asset, cambiar el nombre). `migrateBg()`
+    en `App.jsx` migra lo guardado en localStorage (mapa de URLs externas + regex
+    `/fit-NN.jpg` → `/cw-NN.jpg`). Verificado: `cw-*` y `chile-*` sirven 200,
+    `/fit-01.jpg` da 404. · `App.jsx`, `Settings.jsx`, `frontend/public/`
+- [2026-07-18] **Datos demo regenerados: jun–oct 2026 (para demos de la app).**
+  Se borró TODO lo del usuario `demo` (169 sesiones viejas, rutinas, ubicaciones)
+  y se regeneró por script directo en la BD (patrón `docker exec -i
+  barra-austral-backend python3 < script`; NO se tocó `seeds.py` — `seed_demo_data`
+  solo corre si demo no tiene sesiones, así que no interfiere). Resultado:
+  **76 sesiones** (13-19/mes) con:
+  - **Progresión realista**: dominadas Band Assisted → Negativas → 1ª estricta
+    (15-jul) → lastradas 2.5→7.5kg (desde 16-sep) → PR 10 reps (28-oct); pistol
+    asistida → libre (11-sep); plank 45s→99s; sentadillas con mochila 6→10kg
+    (desde 14-ago); Archer push-ups desde ~10-ago; One-arm desde mediados oct.
+    OJO: el usuario ELIGIÓ el año 2026 aunque parte sea futuro — va a presentar
+    la app en los próximos meses y quiere el calendario del mes actual lleno.
+    Primero se generó jun–oct 2025; se regeneró a 2026 recalculando los hitos
+    para que cayeran en los weekdays correctos (lun push/mié pull/vie legs/sáb
+    full).
+  - **Tipos de sesión**: Push/Pull/Leg Day, Full Body (sáb), Upper Body (mixto,
+    1 lunes de cada 4 desde ago), cardio-only (Trote matutino / Burpees + trote,
+    → celda cian "Cardio"), semana de vacaciones 17-23 ago (solo un trote).
+  - **HR**: desde el 13-jun ("estrena el cinturón", nota milestone). Curva
+    sintética muestreada cada 5s (`hrSamples`), avg/max/min por sesión y
+    startHr/avgHr/maxHr por set. Coherente: trote avg~147 > burpees 142 > legs
+    123 > push 117 > pull 114; el fitness mejora (misma carga, menos bpm).
+  - **9 fotos** (hitos + foto de progreso mensual el 1er sábado): archivos en
+    `data/photos/demo/` (copias de `cw-*.jpg` con nombre estilo upload real,
+    subidas con `docker cp`; ojo: docker snap NO lee `/tmp` ni dot-dirs de
+    `$HOME` → staging en dir visible bajo `/home`). El calendario muestra la
+    miniatura en la celda del día.
+  - Horarios en UTC que mapean a tarde/mañana de Chile (UTC-4 invierno, -3 tras
+    6-sep); notas en español (pool + hitos). Rutinas demo recreadas con targets
+    reales; ubicaciones chilenas (Parque Bustamante, Casa, Cerro San Cristóbal).
+  - **Aislamiento entre usuarios verificado** (pedido explícito del usuario):
+    todos los endpoints filtran por token→usuario; fotos en
+    `data/photos/<username>/`; lo único compartido es el catálogo `exercises`.
+    IDs de sesión demo con prefijo `demo-` (la PK de sessions es global).
+    Conteos de cuyi idénticos antes/después (35 ses / 16 rut / 2 loc / 33
+    fotos). Verificado por API: login demo, blob completo, fotos 200.
+- [2026-07-20] **Filas de series sin unidades inline: encabezados de columna.**
+  Se quitaron las etiquetas "reps"/"kg" a la derecha de los inputs de cada serie
+  y se añadió una fila de encabezado sobre las columnas. En `ExerciseCard.jsx`
+  (Train, `CompletedSet`): encabezado "reps · kg" alineado por anchos fijos
+  (w-5 índice / w-14 tiempo / flex-1 reps / w-14 kg / w-6 botón X). En
+  `SessionEditor.jsx` (`SetRow`): se quitaron también el "s" de duración y el
+  encabezado es "kg · time · reps" (mismo orden de los inputs: peso, duración,
+  reps). · `ExerciseCard.jsx`, `SessionEditor.jsx`
+- [2026-07-20] Banner de rutina en Train: el "rest" pasa de segundos ("180s") a
+  `fmtDuration` de `utils.js` ("3m 0s"), el formato estándar de duraciones de la
+  app (el usuario rechazó el intermedio "03:00"). · `ExerciseCard.jsx`
+- [2026-07-20] **Catálogo: Warm-up (34, "Calentamiento") y Cool-down (35,
+  "Enfriamiento")**, `category: 'Remo'` (Cardio), `muscles: ['Heart']` — como
+  Jogging/Burpees, así no ensucian stats de músculos ni colores. Añadidos a las
+  **20 rutinas** de la BD (16 cuyi + 4 demo) por script directo (patrón
+  `docker exec -i barra-austral-backend python3 < script`, idempotente): Warm-up en
+  posición 0 (resto desplazado +1) y Cool-down al final, ambos `timeSeconds:300`,
+  1 set, rest 0. (Hubo un vaivén: el usuario pidió quitarlos de demo y al tiro
+  los volvió a querer — quedaron en TODAS las rutinas.) `seed_cuyi.py` NO se
+  tocó (solo corre si cuyi no tiene rutinas). Verificado en BD: 40 filas =
+  2×20 rutinas. · `exercises.js`, `seeds.py`, BD
+- [2026-07-21] **Beep al terminar el descanso entre sets + botón on/off.** Nuevo
+  módulo `sound.js` (mismo patrón external-store que `heartRate.js`): `playBeep()`
+  (Web Audio, dos tonos cortos) gateado por un flag `enabled` persistido en
+  `localStorage` (`gym_rest_beep`, default ON), hook `useRestSound()`.
+  `RestTimer` (`ExerciseCard.jsx`) ahora recibe `targetSeconds={exercise.restSeconds}`
+  (el descanso objetivo de la rutina) y dispara el beep **una sola vez** al
+  cruzar ese umbral (ref `beepedRef`, se resetea solo porque el componente se
+  desmonta/remonta cada vez que `rest` pasa de null a no-null); el timer se
+  pone verde cuando se cumplió el objetivo. Botón **Bell/BellOff** en el header
+  de `Dashboard.jsx` (junto al cronómetro de sesión, visible solo con sesión
+  activa) para mutear/activar el sonido globalmente. · `sound.js` (nuevo),
+  `ExerciseCard.jsx`, `Dashboard.jsx`
+- [2026-07-22] **Optimización de espacio durante la sesión activa.** (1) Se quitó la
+  columna con el número de set (1,2,3…) de las filas de series — ya no aporta info,
+  el orden es visual. Afecta `ActiveSet`/`CompletedSet` (Train) y `SetRow`
+  (History → editar sesión), incluidos los spacers de encabezado. (2) El header
+  (`Dashboard.jsx`) oculta "Barra Austral" y "@usuario" mientras `status === 'active'`
+  (se mantiene el div `flex-1` vacío para no correr el resto del layout), dejando
+  más espacio para el cronómetro grande y el BPM sin tener que sacar el botón de
+  campana (beep). Fuera de sesión activa se ve todo igual que antes. ·
+  `ExerciseCard.jsx`, `SessionEditor.jsx`, `Dashboard.jsx`
+- [2026-07-22] **Countdown de 5s antes de contar ejercicios isométricos.** Al
+  presionar "Start set" en un ejercicio isométrico (`isIsometric()`, catálogo:
+  solo **Plank Hold** y **Passive Hang** tienen `isometric: true`; no hay otros
+  en `EXERCISES` que calcen con el fallback por nombre hold/hang/plank/wall
+  sit/l-sit/hollow/bridge), `ActiveSet` (`ExerciseCard.jsx`) entra en fase
+  `'prep'`: tarjeta ámbar "Prepárate…" con cuenta regresiva 5→1 (1s cada uno) y
+  botón **Skip**. Al llegar a 0 (o Skip) pasa a fase `'active'` y ahí recién
+  arranca el cronómetro del hold (mismo look cian de siempre); el tiempo de
+  acomodo NO se guarda como duración del set ni se acumula HR (bpm solo se
+  junta durante `'active'`, así `startHr` queda como el pulso al empezar el
+  hold real, no al presionar Start). Ejercicios no isométricos sin cambios
+  (arrancan directo en `'active'`). · `ExerciseCard.jsx`
+- [2026-07-22] **Bip al arrancar el hold + tick cada 10s.** Nuevo `playTick()` en
+  `sound.js` (beep corto único, distinto del triple beep de fin de descanso) para
+  no confundir señales. En `ActiveSet` (`ExerciseCard.jsx`): al pasar de `'prep'`
+  a `'active'` (countdown llega a 0 o se presiona Skip) suena `playBeep()` (el
+  mismo triple-beep de siempre, como "go"); mientras el hold corre, cada 10s de
+  `elapsed` (10, 20, 30…) suena `playTick()`. Ambos respetan el toggle
+  Bell/BellOff del header (mismo flag `gym_rest_beep`). · `sound.js`,
+  `ExerciseCard.jsx`
+- [2026-07-22] **Catálogo: Bench Press (36) y Barbell Squat (37).** Bench Press
+  `category: 'Push'`, `muscles: ['Chest','Triceps','Shoulders']` (mismo patrón
+  que Push-ups, sin `type: 'machine'`, el peso se registra con el campo kg
+  normal de cada set). Barbell Squat `category: 'Piernas'`,
+  `muscles: ['Quads','Glutes','Hamstrings']` (como Bulgarian Split Squats).
+  Añadidos con id fuera de la secuencia de su sección (36/37 al final, igual
+  que Jogging/Burpees) para no reordenar ids existentes. Sincronizado
+  frontend (`exercises.js`) + backend (`seeds.py` CATALOG, upsert idempotente
+  al reiniciar); verificado en BD tras rebuild. · `exercises.js`, `seeds.py`
+- [2026-08-14] **Catálogo: 10 ejercicios de kettlebell (38–47) + rutina "Misión Rusa".**
+  Fuente: video de **Chuy Almada** "Misión Rusa FUERZA SUDOR y QUEMAR GRASA (22 Minutos)"
+  (`youtube.com/watch?v=Pa2dSlRJm3Y`, 22:54). El listado de ejercicios NO está en la
+  descripción ni en capítulos → se sacó de la **transcripción ASR** (yt-dlp standalone
+  descargado al scratchpad; el host no tiene pip/yt-dlp y el endpoint `timedtext`
+  directo devuelve vacío). Formato real: **10 ejercicios × 2 rondas, 40s trabajo /
+  20s descanso**.
+  - **Convención de nombres pedida por el usuario**: si el ejercicio requiere equipo,
+    el nombre lo lleva (equipo primero en inglés: `Kettlebell Swings`, `Barbell Squat`;
+    en español "… con pesa rusa"). Los 10 llevan `Kettlebell`/`pesa rusa` → buscables
+    por implemento en `ExerciseSearch` (filtra por name, es y category).
+  - Ejercicios (id, category, muscles): 38 Kettlebell Swings `Piernas`
+    [Glutes,Hamstrings,Core,Shoulders]; 39 Single-arm Swings `Piernas`
+    [Glutes,Hamstrings,Core,Forearms]; 40 Clean and Press `Push`
+    [Shoulders,Triceps,Traps,Core]; 41 Squat + Halo `Piernas`
+    [Quads,Glutes,Shoulders,Core]; 42 Thrusters `Push` [Quads,Glutes,Shoulders,Triceps];
+    43 Deadlift + Around the Body `Piernas` [Hamstrings,Glutes,Core,Forearms];
+    44 Lunges + Pass Through `Piernas` [Quads,Glutes,Hamstrings,Core];
+    45 Sumo Squat + Upright Row `Piernas` [Quads,Glutes,Adductors,Traps];
+    46 Kneeling Twists `Custom` [Core,Obliques]; 47 Russian Twists `Custom`
+    [Core,Obliques]. Sección propia en `exercises.js` (bloque por **implemento**, no
+    por patrón — es la primera vez que se rompe el agrupado por categoría).
+  - **Nuevo músculo `Obliques` → 'Oblicuos'** en `MUSCLE_ES` (lo usan 46 y 47).
+  - Categoría `Custom` (= "Other") para los dos twists: no existe categoría Core/Abs
+    (Plank Hold vive en `Push` por decisión previa).
+  - **Rutina `rt_cuyi_kb_mision_rusa`** ("Misión Rusa (Kettlebell)") creada para `cuyi`
+    por script directo (patrón `docker exec -i barra-austral-backend python3 < script`,
+    idempotente: borra y re-crea por id). 12 filas = Warm-up (pos 0, 300s) + los 10 en
+    **un solo `superset_group=1`** (`Dashboard.jsx` lo pinta como bloque morado
+    "Superset · do all back-to-back" = el circuito) con `targetSets=2`,
+    `timeSeconds=40`, `restSeconds=20` + Cool-down (300s). `categories: ['Push','Piernas']`
+    — el circuito **no tiene tracción real** (ni dominadas ni remo al torso), así que no
+    es Full Body pese a venderse como tal.
+  - Verificado tras rebuild: 47 ejercicios en `/api/exercises`, 17 rutinas de cuyi,
+    38 sesiones intactas, frontend 200. · `exercises.js`, `seeds.py`, BD
+- [2026-08-14] **Contenedores renombrados a `barra-austral-*`** (pedido del usuario:
+  otra IA intentó bajar los contenedores creyendo que `calistia-db` no tenía relación
+  con `gymtracker-*`). `docker-compose.yml`: `calistia-db` → **`barra-austral-db`**,
+  `gymtracker-backend` → **`barra-austral-backend`**, `gymtracker-frontend` →
+  **`barra-austral-frontend`**. Ahora los tres salen juntos en `docker ps`.
+  - **Solo se cambió `container_name`, NO los nombres de servicio** (`db`, `backend`,
+    `frontend`): el DNS interno de la red `gymnet` usa el nombre de SERVICIO —
+    `DATABASE_URL=...@db:5432` y `proxy_pass http://backend:8000` en `nginx.conf`.
+    Tocar los servicios habría roto ambas conexiones.
+  - Seguro de recrear porque los volúmenes son **bind mounts** (`./data/postgres`,
+    `./data`), no volúmenes nombrados: los datos viven en el host. Igual se hizo
+    `pg_dump` antes (`backup_calistia_20260814_014533.sql`, 1.1 MB).
+  - `cloudflared` NO se ve afectado: usa túnel con `TUNNEL_TOKEN` (config remota en
+    el panel de Cloudflare) y vive en otra red (`cloudflare_default`), así que llega
+    por el puerto publicado `${PORT}`, no por nombre de contenedor.
+  - Se actualizaron las referencias en `RESUMEN.md` (12) y en `.claude/settings.json`
+    (permiso `docker exec ... python3 -c`). **Sin tocar**: el usuario/BD de Postgres
+    siguen siendo `calistia` (renombrarlos exige migración real y no se ve en
+    `docker ps`), y `frontend/package.json` sigue con `"name": "gymtracker"` (nombre
+    del paquete npm, interno al build).
+  - Verificado tras recrear: 3 contenedores healthy, sin huérfanos, BD con 2 usuarios
+    / 47 ejercicios / 114 sesiones / 21 rutinas / 45 fotos, login de cuyi OK,
+    frontend 200, `/api/health` ok. · `docker-compose.yml`, `.claude/settings.json`
+- [2026-08-14] **Solo un descanso corriendo a la vez (bug de descansos cruzados).**
+  El estado `rest` vive DENTRO de cada `ExerciseCard`, así que "Start set (saves
+  rest)" solo cortaba el descanso de esa misma tarjeta: al terminar una serie del
+  ejercicio A (arranca su descanso) y partir una serie del ejercicio B, el descanso
+  de A seguía corriendo y beepeando. Se notaba sobre todo en supersets (Misión
+  Rusa: se rota entre 10 ejercicios).
+  - Registro pub/sub a nivel de módulo en `ExerciseCard.jsx` (`restListeners` +
+    `announceSetStart(owner)`): `addSet()` avisa al resto y **cada otra tarjeta
+    finaliza su descanso** (lo guarda en su última serie completada, igual que
+    Stop) — no se pierde el tiempo descansado. Identidad por `useRef({})` por
+    montaje (no por `instanceId`).
+  - El listener se registra con `[]` deps y usa refs (`restRef`, `exerciseRef`,
+    `onChangeRef`) para leer props frescas desde el evento de otra tarjeta.
+  - De paso: `stopRest(elapsed)` → **`finishRest()`** (sin argumento, calcula el
+    elapsed desde `getCurrentRestElapsed()`, misma fuente que mostraba el timer),
+    compartido por el botón Stop y el corte remoto; se extrajo `lastCompletedIdx()`
+    (estaba duplicado en `setsWithRest` y `stopRest`).
+  - Verificado: build OK, frontend 200. · `ExerciseCard.jsx`
+- [2026-08-14] **Modo automático (piloto de circuito).** Botón ⚡ (`Zap`) en la
+  cabecera junto a la campana, solo con sesión activa. Encadena la rutina sola:
+  serie corre su `timeSeconds` → 3 ticks de cuenta regresiva → beep → **auto-Stop**
+  → descanso corre su `restSeconds` → beep → **auto-Stop del descanso** → arranca
+  el set siguiente. Pensado para circuitos de cardio con peso (Misión Rusa: 10
+  kettlebell, 40s/20s, 2 rondas).
+  - **Nuevo módulo `autoRun.js`** (external store, patrón de `sound.js`). Se llevó
+    ahí también la coordinación entre tarjetas (`announceSetStart`) que estaba
+    inline en `ExerciseCard.jsx` — es el único lugar que ve TODAS las tarjetas a
+    la vez, porque el set activo y el descanso son estado local de cada card.
+  - **Registro de tarjetas**: cada `ExerciseCard` se inscribe con
+    `registerCard(ownerRef, cardRef.current)` y **reescribe su descriptor en cada
+    render** (`order`, `group`, `targetSets`, `completed`, `running`, `resting`,
+    `startSet`, `finishRest`) — identidad estable vía `useRef({})`, valores siempre
+    frescos. `order` = índice que pasa `Dashboard`.
+  - **Orden de avance** (`nextCard`): en superset rota al siguiente del bloque y
+    **da la vuelta al primero** para la ronda siguiente; sale del bloque solo
+    cuando TODOS llegaron a `targetSets`. Suelto: repite el mismo ejercicio hasta
+    su `targetSets` y recién ahí avanza. `blockOf()` usa el run **contiguo** de
+    `supersetGroup`, igual que el agrupado visual de `Dashboard`.
+  - `ADVANCE_DELAY_MS = 400`: pausa entre sets Y el respiro que necesita React
+    para volcar el set terminado al estado antes de contar `completed` (clave en
+    el camino `restSeconds === 0`, que avanza sin esperar descanso).
+  - Al **encender** con nada corriendo arranca el primer ejercicio pendiente; al
+    terminar la rutina se **apaga solo**; `Dashboard` lo apaga al salir de
+    `status === 'active'`. **No se persiste** (a diferencia del beep): es modo de
+    un entrenamiento, y quedar armado tras un reload dispararía timers de sorpresa.
+  - Si el ejercicio no tiene `timeSeconds` (reps), el set NO se auto-para: lo
+    paras tú y desde ahí la cadena sigue igual. Pausar el descanso corta la cadena
+    (escotilla de escape).
+  - Al auto-arrancar una tarjeta se despliega (`setCollapsed(false)`) y hace
+    `scrollIntoView` centrado, para que el celu muestre siempre el ejercicio que
+    corre.
+  - Verificado: build OK, frontend 200, y **simulación de la secuencia con el
+    código real** (`nextCard`/`blockOf` extraídas del archivo por texto y
+    evaluadas): Misión Rusa da 22 sets = Warm-up + 2 rondas de los 10 + Cool-down;
+    ejercicio suelto de 3 sets se repite 3 veces antes de avanzar. ·
+    `autoRun.js` (nuevo), `ExerciseCard.jsx`, `Dashboard.jsx`
+- [2026-08-14] **Screen Wake Lock: la pantalla no se apaga durante la sesión.**
+  Motivo: con la pantalla bloqueada Android estrangula los `setInterval` y el
+  auto-Stop del modo automático + el beep de descanso llegan tarde o no llegan —
+  justo cuando el celu está en el suelo. Nuevo `wakeLock.js` (external store,
+  patrón de `sound.js`):
+  - `navigator.wakeLock.request('screen')` mientras `enabled && wanted`; `wanted`
+    lo setea `Dashboard` con `status === 'active'` (+ cleanup al desmontar).
+  - **El sistema suelta el lock cada vez que la página deja de ser visible**, así
+    que se re-pide en `visibilitychange` (listener global al importar el módulo).
+    Pedirlo con la página oculta tira excepción → se chequea `visibilityState`.
+  - Guardas: `requesting` contra requests solapadas, y si `enabled`/`wanted`
+    cambiaron mientras el request estaba en vuelo se suelta al tiro (race).
+    `catch` silencioso: si lo niegan (ahorro de batería, permissions policy) la
+    app sigue igual.
+  - **Toggle en Settings** ("Pantalla → Mantener la pantalla encendida"),
+    preferencia persistida en `localStorage` (`gym_wake_lock`, default ON). Si el
+    navegador no soporta la API el switch sale deshabilitado y lo dice.
+  - Requiere contexto seguro: OK en `gym.ssalinas.cl` (HTTPS por el túnel) y en
+    localhost. **Falta probar en Brave Android** (es Chromium y debería andar,
+    pero ahí ya falló Web Bluetooth). · `wakeLock.js` (nuevo), `Dashboard.jsx`,
+    `Settings.jsx`
+- [2026-08-14] **Cuenta regresiva de 3 tics también en el descanso.** El set ya
+  tenía los 3 `playTick()` antes de terminar (modo automático); el descanso solo
+  tenía el triple beep final. Ahora `RestTimer` tickea igual los últimos 3s.
+  Diferencia a propósito: los tics del SET solo existen en modo automático
+  (dependen de `autoStopAt`), los del DESCANSO suenan **siempre que la rutina
+  tenga `restSeconds`**, igual que el beep final que ya existía desde antes del
+  piloto automático. No tickea en pausa (`rest.paused`) ni después del beep final
+  (`beepedRef`). · `ExerciseCard.jsx`
+- [2026-08-14] **Gráfico de pulso: línea punteada en los descansos.** Pedido del
+  usuario. Recharts **no puede** puntear parte de una sola `<Line>`, así que el
+  trazo se dibuja como **dos `<Line>` superpuestas** que se anulan mutuamente:
+  `chart.work` (sólida, `bpm: null` en descanso) y `chart.rest` (punteada
+  `strokeDasharray="4 5"`, opacidad .65, `bpm: null` en trabajo), ambas con
+  `connectNulls={false}`.
+  - **Clasificar por SEGMENTO, no por punto** (corregido el mismo día, ver abajo).
+  - Ventanas de descanso reconstruidas en `hrChart` desde los sets guardados:
+    `startedAt + duration` → `+ restDuration`, en segundos desde `startTime`.
+  - `HrTooltip` arreglado: con dos series, `payload[0].value` puede ser el `null`
+    de la otra → ahora busca el primer valor no nulo (`payload.find(...)`).
+  - Leyenda "línea punteada = descanso" (inline y en la vista expandida), solo si
+    `hasRest`.
+  - **Ojo con los tiempos**: `startTime` y `startedAt` salen ambos por `_iso()`
+    de `serializers.py` (sufijo `Z`), así que `new Date()` los interpreta igual y
+    no hay desfase de zona. Si alguna vez se cambia uno solo, los punteados se
+    desplazan enteros.
+  - Verificado con sesión real de `cuyi` (2026-08-17, 417 muestras, 70 min):
+    26 ventanas, 0 fuera de rango, 16 tramos punteados, 63% del tiempo en
+    descanso, sin solapes. El bpm promedio sale MÁS ALTO en descanso (114 vs 111)
+    — no es un error de alineación, es el lag cardíaco: el pulso peaquea después
+    de terminar el esfuerzo. · `SessionSummary.jsx`
+- [2026-08-14] **Fila del set: pulso ahora muestra `avg/max` (ej. `83/97`).**
+  Antes solo salía `set.avgHr`; `startHr`/`maxHr` estaban únicamente en el
+  atributo `title`, **inútil en celular** (no hay hover) — que es donde el usuario
+  usa la app. El max va en `text-red-400/50` para que se lea como secundario, y
+  **se oculta si `maxHr === avgHr`** (una sola lectura de la banda) para no
+  mostrar "83/83". El `title` con start · avg · max se mantiene para escritorio.
+  La tabla de detalle de `SessionSummary` ya tenía las 3 columnas separadas, no se
+  tocó. · `ExerciseCard.jsx`
+- [2026-08-14] **BUG corregido en la línea punteada (lo pilló el usuario).** Se
+  veía casi todo punteado; tras iniciar un set salía sólido "un segundo" y volvía
+  a punteado. **Las ventanas estaban bien** (trabajo vs descanso se pisan 1s en
+  toda la sesión); el error era el **método de partición**:
+  - v1 (malo): clasificar cada PUNTO y untar los vecinos a la punteada. En un set
+    con 2 muestras AMBAS son frontera → la punteada se dibuja encima de la sólida
+    y la tapa. Cossack Squats #1 (47s, 2 muestras) era justo ese caso.
+  - v2 (malo también): clasificar cada SEGMENTO por su punto medio pero marcando
+    los puntos en arreglos alineados a `samples`. Un segmento aislado entre dos
+    del otro tipo necesita sus dos extremos en la otra línea → **se dibuja dos
+    veces** (5 casos reales, medidos).
+  - v3 (correcta): `lineFor(wantRest)` recorre los segmentos y emite **solo las
+    corridas que le tocan**, separadas por un `{t, bpm: null}` explícito que
+    quiebra el path. Los dos arreglos ya NO están alineados con `samples` ni
+    entre sí, y eso está bien.
+  - Verificado sobre la sesión real: 416 segmentos, 105 sólidos + 311 punteados =
+    416, **0 dibujados dos veces, 0 mal clasificados**. Script de verificación:
+    extrae `lineFor` del .jsx por texto y lo evalúa en node contra el JSON de la
+    BD (así se valida el código real, no una copia).
+  - **Hallazgo aparte, NO es bug del gráfico**: la banda se desconecta harto. En
+    esa sesión hay 1 muestra cada 10.2s (esperado 5s), **24 huecos >20s que cubren
+    el 48% del eje** (el mayor de 311s), y **10 de 27 ventanas de trabajo tienen 0
+    o 1 muestra** → esos sets no tienen pulso registrado y la línea que los cruza
+    es interpolación entre puntos lejanos. · `SessionSummary.jsx`
+- [2026-08-14] **La línea se corta cuando no hay señal de la banda.** Constante
+  `HR_GAP_S = 20` en `SessionSummary.jsx` (la banda se muestrea cada ~5s, así que
+  un hueco >20s son ≥3 lecturas perdidas: es caída, no jitter). En `lineFor`, el
+  segmento que cruza un hueco **no lo toma ninguna de las dos líneas** → queda el
+  vacío visible en vez de una recta inventada.
+  - Verificado sobre la sesión real: 416 segmentos = 93 sólidos + 299 punteados +
+    24 omitidos por hueco, 0 duplicados, y **0 segmentos dibujados cruzan un hueco
+    >20s**. Queda el 50% del eje en blanco: es la mitad de la sesión sin señal.
+  - **Cómo se "detecta" la desconexión: NO se detecta, se infiere.** `Dashboard`
+    solo guarda una muestra si `hr.status === 'connected'` y llegó lectura nueva
+    (`Dashboard.jsx:98-105`), y `session.hrSamples` no registra eventos de
+    conexión. Un hueco puede ser: banda desconectada, banda conectada sin emitir
+    (fuera de rango / sin contacto con la piel), **o la página en segundo plano
+    con los timers estrangulados** (justo lo que el wake lock intenta evitar).
+  - Por eso la leyenda dice **"cortes = sin señal de la banda"** y no "banda
+    desconectada": afirmar la causa sería inventar. Si alguna vez se quiere la
+    causa real, hay que registrar los eventos de `heartRate.js` (`connected` /
+    `disconnected`) dentro de la sesión. · `SessionSummary.jsx`

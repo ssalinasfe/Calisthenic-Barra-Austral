@@ -1,5 +1,9 @@
 .env
 data/postgres/
+# fotos personales de los usuarios
+data/photos/
+# dumps de la BD: traen tokens y hashes de contraseña
+backup_*.sql
 
 node_modules/
 dist/

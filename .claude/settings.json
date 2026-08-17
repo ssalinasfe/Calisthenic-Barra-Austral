@@ -5,7 +5,7 @@
       "Bash(python3 -c ' *)",
       "Bash(sudo python3 -c ' *)",
       "Bash(curl -s -X POST http://localhost:50666/api/login -H 'Content-Type: application/json' -d '{\"username\":\"cuyi\",\"password\":\"cuyi\"}')",
-      "Bash(docker exec gymtracker-backend python3 -c ' *)",
+      "Bash(docker exec barra-austral-backend python3 -c ' *)",
       "Bash(curl -s http://localhost:50666/api/data -H 'x-api-token: 12-SF8hkrpAjCROO6L_V0y70b9831Wce')",
       "Bash(docker compose *)"
     ]

@@ -11,13 +11,14 @@ export const EXERCISES = [
   { id: 8,  name: 'Explosive Push-ups',           es: 'Flexión explosiva',             category: 'Push',    muscles: ['Chest', 'Triceps', 'Shoulders'] },
   { id: 9,  name: 'Archer Push-ups',              es: 'Flexión de arquero',            category: 'Push',    muscles: ['Chest', 'Triceps', 'Shoulders'] },
   { id: 10, name: 'One-arm Push-up',              es: 'Flexión a una mano',            category: 'Push',    muscles: ['Chest', 'Triceps', 'Core'] },
+  { id: 36, name: 'Bench Press',                  es: 'Press de banca',                category: 'Push',    muscles: ['Chest', 'Triceps', 'Shoulders'] },
 
   // ===== PULL =====
   { id: 11, name: 'Banded Overhead Pull-aparts',  es: 'Aperturas superiores con banda', category: 'Pull',   muscles: ['Rear Delts', 'Traps'] },
   { id: 12, name: 'Banded Horizontal Pull-aparts',es: 'Aperturas horizontales con banda', category: 'Pull', muscles: ['Rear Delts', 'Rhomboids'] },
-  { id: 13, name: 'Banded Pull-downs',            es: 'Jalones con banda',             category: 'Pull',    muscles: ['Lats', 'Back'] },
+  { id: 13, name: 'Banded Pull-downs',            es: 'Jalones con banda',             category: 'Pull',    muscles: ['Lats', 'Mid Back'] },
   { id: 14, name: 'Bent Over Barbell Rows',       es: 'Remo inclinado con barra',      category: 'Pull',    muscles: ['Lats', 'Mid Back', 'Biceps'] },
-  { id: 15, name: 'Passive Hang',                 es: 'Colgado pasivo',                category: 'Pull',    muscles: ['Forearms', 'Lats'], isometric: true },
+  { id: 15, name: 'Passive Hang',                 es: 'Colgado pasivo',                category: 'Pull',    muscles: ['Forearms'], isometric: true },
   { id: 16, name: 'Scapula Pull-ups',             es: 'Dominadas escapulares',         category: 'Pull',    muscles: ['Traps', 'Lats'] },
   { id: 17, name: 'Australian Pull-ups',          es: 'Dominadas australianas',        category: 'Pull',    muscles: ['Lats', 'Mid Back', 'Biceps'] },
   { id: 18, name: 'Negative Pull-ups',            es: 'Dominadas negativas',           category: 'Pull',    muscles: ['Lats', 'Biceps', 'Forearms'] },
@@ -27,11 +28,26 @@ export const EXERCISES = [
   // ===== LEGS =====
   { id: 21, name: 'Bodyweight Squats',            es: 'Sentadilla con peso corporal',  category: 'Piernas', muscles: ['Quads', 'Glutes'] },
   { id: 22, name: 'Narrow Stance Squats',         es: 'Sentadilla postura cerrada',    category: 'Piernas', muscles: ['Quads'] },
-  { id: 23, name: 'Deep Squats',                  es: 'Sentadilla profunda',           category: 'Piernas', muscles: ['Quads', 'Glutes', 'Hamstrings'] },
+  { id: 23, name: 'Deep Squats',                  es: 'Sentadilla profunda',           category: 'Piernas', muscles: ['Quads', 'Glutes'] },
   { id: 24, name: 'Bulgarian Split Squats',       es: 'Sentadilla búlgara',            category: 'Piernas', muscles: ['Quads', 'Glutes', 'Hamstrings'] },
   { id: 25, name: 'Cossack Squats',               es: 'Sentadilla cosaca',             category: 'Piernas', muscles: ['Quads', 'Glutes', 'Adductors'] },
   { id: 26, name: 'Pistol Squats (assisted)',     es: 'Sentadilla pistola (variante)', category: 'Piernas', muscles: ['Quads', 'Glutes', 'Core'] },
   { id: 27, name: 'Pistol Squats',                es: 'Sentadilla pistola',            category: 'Piernas', muscles: ['Quads', 'Glutes', 'Core'] },
+  { id: 37, name: 'Barbell Squat',                es: 'Sentadilla con barra',          category: 'Piernas', muscles: ['Quads', 'Glutes', 'Hamstrings'] },
+
+  // ===== KETTLEBELL ("Misión Rusa", Chuy Almada — 10 ejercicios × 2 rondas) =====
+  // Bloque definido por el implemento (pesa rusa), no por el patrón: cada uno
+  // lleva su propia `category` (Push / Piernas / Custom) como el resto.
+  { id: 38, name: 'Kettlebell Swings',              es: 'Swing con pesa rusa',                        category: 'Piernas', muscles: ['Glutes', 'Hamstrings', 'Core', 'Shoulders'] },
+  { id: 39, name: 'Kettlebell Single-arm Swings',   es: 'Swing a una mano con pesa rusa',             category: 'Piernas', muscles: ['Glutes', 'Hamstrings', 'Core', 'Forearms'] },
+  { id: 40, name: 'Kettlebell Clean and Press',     es: 'Cargada y press con pesa rusa',              category: 'Push',    muscles: ['Shoulders', 'Triceps', 'Traps', 'Core'] },
+  { id: 41, name: 'Kettlebell Squat + Halo',        es: 'Sentadilla con pesa rusa y giro sobre la cabeza', category: 'Piernas', muscles: ['Quads', 'Glutes', 'Shoulders', 'Core'] },
+  { id: 42, name: 'Kettlebell Thrusters',           es: 'Thruster con pesa rusa',                     category: 'Push',    muscles: ['Quads', 'Glutes', 'Shoulders', 'Triceps'] },
+  { id: 43, name: 'Kettlebell Deadlift + Around the Body', es: 'Peso muerto con pesa rusa y giro a la cintura', category: 'Piernas', muscles: ['Hamstrings', 'Glutes', 'Core', 'Forearms'] },
+  { id: 44, name: 'Kettlebell Lunges + Pass Through', es: 'Estocada con pesa rusa y paso bajo la pierna', category: 'Piernas', muscles: ['Quads', 'Glutes', 'Hamstrings', 'Core'] },
+  { id: 45, name: 'Kettlebell Sumo Squat + Upright Row', es: 'Sentadilla sumo con pesa rusa y remo al mentón', category: 'Piernas', muscles: ['Quads', 'Glutes', 'Adductors', 'Traps'] },
+  { id: 46, name: 'Kettlebell Kneeling Twists',     es: 'Giro de torso de rodillas con pesa rusa',    category: 'Custom',  muscles: ['Core', 'Obliques'] },
+  { id: 47, name: 'Kettlebell Russian Twists',      es: 'Giro ruso con pesa rusa',                    category: 'Custom',  muscles: ['Core', 'Obliques'] },
 
   // ===== CARDIO / MACHINES =====
   { id: 28, name: 'Rowing Machine',               es: 'Máquina de remos',              category: 'Remo',    muscles: ['Heart'], type: 'machine' },
@@ -40,6 +56,8 @@ export const EXERCISES = [
   { id: 31, name: 'Spin Bike',                    es: 'Bicicleta de spinning',         category: 'Remo',    muscles: ['Heart'], type: 'machine' },
   { id: 32, name: 'Jogging',                      es: 'Trotar',                        category: 'Remo',    muscles: ['Heart'] },
   { id: 33, name: 'Burpees',                      es: 'Burpees',                       category: 'Remo',    muscles: ['Heart'] },
+  { id: 34, name: 'Warm-up',                      es: 'Calentamiento',                 category: 'Remo',    muscles: ['Heart'] },
+  { id: 35, name: 'Cool-down',                    es: 'Enfriamiento',                  category: 'Remo',    muscles: ['Heart'] },
 ]
 
 // Helper: get the type for an exercise by name (defaults to 'reps')
@@ -110,15 +128,14 @@ export const MUSCLE_ES = {
   Rhomboids:   'Romboides',
   Serratus:    'Serratos',
   Lats:        'Dorsales',
-  Back:        'Espalda',
   'Mid Back':  'Espalda media',
   Forearms:    'Antebrazos',
   Quads:       'Cuádriceps',
   Hamstrings:  'Isquiotibiales',
   Glutes:      'Glúteos',
   Adductors:   'Aductores',
-  Calves:      'Pantorrillas',
   Core:        'Core',
+  Obliques:    'Oblicuos',
   Legs:        'Piernas',
   Heart:       'Corazón',
   Other:       'Otro',
@@ -194,8 +211,10 @@ export function blendCategoryColor(categories) {
 }
 
 // ── Muscle-group categorization (shared by Calendar + History) ───────────────
-// Cardio (Remo) is a cooldown, not a coloring category. Only these muscle
-// groups color a session/day; a day with cardio + a group belongs to that group.
+// Cardio (Remo) never mixes with the main muscle groups: a session/day with
+// cardio + a group belongs to that group. A cardio-ONLY session/day does show
+// as "Cardio" — that fallback lives in the callers (Calendar cells, History
+// pill), since muscleCategoriesOf only reports the main groups below.
 export const MUSCLE_ORDER = ['Push', 'Pull', 'Piernas', 'Custom']
 
 // Given a { category: reps } tally, return the muscle groups trained (reps > 0),

@@ -99,7 +99,7 @@ def session_set_to_json(st: SessionSet) -> dict:
     return out
 
 
-def user_data_to_json(user: User, db) -> dict:
+def user_data_to_json(user: User) -> dict:
     """Build the full {sessions, locations, routines} blob for a user."""
     return {
         'sessions':  [session_to_json(s) for s in

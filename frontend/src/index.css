@@ -38,6 +38,19 @@ body {
   background-attachment: fixed;
 }
 
+/* Cuando la orientación de la imagen no coincide con la pantalla (vertical en
+   PC, apaisada en el celu): copia desenfocada que rellena los bordes… */
+.backdrop-blur-fill {
+  filter: blur(28px) brightness(0.6);
+  transform: scale(1.12);   /* oculta el halo del blur en los bordes */
+}
+
+/* …y la imagen completa centrada encima, sin recortar. */
+.backdrop-contain {
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
 .backdrop-overlay {
   position: fixed;
   inset: 0;

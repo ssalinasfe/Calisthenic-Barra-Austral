@@ -8,7 +8,26 @@
       "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' https://static.zerochan.net/Zero.Two.1024.3653330.webp -o zt-2.webp -w 'zt-2: %{http_code} %{size_download}B\\\\n' --max-time 30)",
       "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' 'https://images.steamusercontent.com/ugc/1844783540884735862/646F2E4FFBBC46DD869B35C09F40C8AC666EE55C/?imw=5000&imh=5000&ima=fit&impolicy=Letterbox&imcolor=%23000000&letterbox=false' -o zt-3.jpg -w 'zt-3: %{http_code} %{size_download}B\\\\n' --max-time 30)",
       "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' 'https://preview.redd.it/zero-two-darling-in-the-franxx-v0-f1qotrxlb3gf1.jpeg?width=640&crop=smart&auto=webp&s=a6679ffd11ab004b6f082d64a3a82c4b9e27062c' -o zt-4.jpg -w 'zt-4: %{http_code} %{size_download}B\\\\n' --max-time 30)",
-      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' https://dthezntil550i.cloudfront.net/u3/latest/u32008180926596450016417516/1280_960/d2536450-ffe9-43d2-942e-a2ea4b69e092.png -o zt-5.png -w 'zt-5: %{http_code} %{size_download}B\\\\n' --max-time 30)"
+      "Bash(curl -L -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36' https://dthezntil550i.cloudfront.net/u3/latest/u32008180926596450016417516/1280_960/d2536450-ffe9-43d2-942e-a2ea4b69e092.png -o zt-5.png -w 'zt-5: %{http_code} %{size_download}B\\\\n' --max-time 30)",
+      "Bash(docker compose *)",
+      "Bash(xxd)",
+      "WebFetch(domain:www.youtube.com)",
+      "Bash(curl -sL -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 \\(KHTML, like Gecko\\) Chrome/120.0 Safari/537.36\" \"https://www.youtube.com/watch?v=Pa2dSlRJm3Y\" -o yt.html)",
+      "Bash(pip list *)",
+      "Bash(python3 -c \"import yt_dlp; print\\(yt_dlp.version.__version__\\)\")",
+      "Bash(python3 -m pip install --quiet --target ./pylibs yt-dlp)",
+      "Bash(curl -sL -o yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp)",
+      "Bash(chmod +x yt-dlp)",
+      "Bash(./yt-dlp --version)",
+      "Bash(./yt-dlp --skip-download --write-auto-subs --sub-langs \"es.*\" --sub-format vtt -o \"vid\" \"https://www.youtube.com/watch?v=Pa2dSlRJm3Y\")",
+      "Bash(./yt-dlp --skip-download --write-auto-subs --sub-langs \"es.*\" --sub-format vtt -o \"vid2\" --print \"%\\(title\\)s|||%\\(channel\\)s|||%\\(duration_string\\)s\" \"https://www.youtube.com/watch?v=dSkyFew7riA\")",
+      "Bash(./yt-dlp --skip-download --write-auto-subs --write-subs --sub-langs \"es.*\" --sub-format vtt -o \"vid2\" \"https://www.youtube.com/watch?v=dSkyFew7riA\")",
+      "Bash(./yt-dlp --skip-download --write-auto-subs --write-subs --sub-langs \"es.*,en.*\" --sub-format vtt -o \"vid3\" \"https://www.youtube.com/watch?v=I2HnklmZ3kY\")",
+      "Bash(./yt-dlp --skip-download --write-subs --sub-langs \"en\" --sub-format vtt -o \"vid3\" \"https://www.youtube.com/watch?v=I2HnklmZ3kY\")",
+      "Bash(mkdir -p /home/david/kbvid)",
+      "Read(//home/david/**)",
+      "Bash(/tmp/claude-1000/-home-david-apps-appGym/8a2ab5b7-cd71-4698-a6cf-c8f0476655eb/scratchpad/yt-dlp -f \"18/best[height<=480]\" -o \"w.%\\(ext\\)s\" \"https://www.youtube.com/watch?v=I2HnklmZ3kY\")",
+      "Bash(docker pull *)"
     ]
   }
 }

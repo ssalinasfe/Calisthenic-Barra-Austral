@@ -174,7 +174,7 @@ function RoutineExerciseRow({ ex, idx, total, onChange, onRemove, onMove, onTogg
                 value={ex.tempo ?? ''}
                 onChange={e => set('tempo', e.target.value)}
                 placeholder="2010"
-                maxLength={4}
+                maxLength={8}
                 className="w-14 bg-white/8 text-white rounded px-1.5 py-1 text-xs text-center font-mono outline-none focus:ring-1 focus:ring-cyan-500"
               />
               <span className="text-gray-600 text-[10px]">tempo</span>
@@ -414,8 +414,10 @@ export default function Routines({ allData, token, onDataChange }) {
 
   function handleSave(draft) {
     const id = draft.id || newId()
-    const others = routines.filter(r => r.id !== id)
-    const updated = [...others, { ...draft, id }]
+    const exists = routines.some(r => r.id === id)
+    const updated = exists
+      ? routines.map(r => (r.id === id ? { ...draft, id } : r))   // keep position
+      : [...routines, { ...draft, id }]
     persist(updated)
   }
 

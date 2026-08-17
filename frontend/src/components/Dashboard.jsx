@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchData, saveData } from '../api'
 import { useHeartRate, hrStore } from '../heartRate'
+import { useRestSound, soundStore } from '../sound'
+import { useAutoRun, autoRunStore } from '../autoRun'
+import { wakeLockStore } from '../wakeLock'
 import ExerciseSearch from './ExerciseSearch'
 import ExerciseCard from './ExerciseCard'
 import SessionSummary from './SessionSummary'
@@ -11,7 +14,7 @@ import ExerciseProgress from './ExerciseProgress'
 import More from './More'
 import RoutineChooser from './RoutineChooser'
 import FinishSessionModal from './FinishSessionModal'
-import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, CalendarDays, MoreHorizontal, MapPin, Trash2, HeartPulse, HeartOff, Activity, TrendingUp } from 'lucide-react'
+import { Play, Square, Settings as SettingsIcon, LogOut, PersonStanding, CalendarDays, MoreHorizontal, MapPin, Trash2, HeartPulse, HeartOff, Activity, TrendingUp, Bell, BellOff, Zap } from 'lucide-react'
 import { format } from 'date-fns'
 import { totalReps as sumReps } from '../utils'
 import { migrateData } from '../exercises'
@@ -78,6 +81,16 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
   // the (optionally) connected BLE belt. Summary stats get saved with the session.
   const hr = useHeartRate()
   const hrSamplesRef = useRef([])
+  const restSound = useRestSound()
+  const autoRun = useAutoRun()
+
+  // Auto mode is a per-workout thing: never leave it armed once the session ends.
+  useEffect(() => { if (status !== 'active') autoRunStore.setEnabled(false) }, [status])
+
+  // Keep the screen awake while training, so the browser doesn't throttle the
+  // set/rest timers. Released as soon as the session ends or the view unmounts.
+  useEffect(() => { wakeLockStore.setWanted(status === 'active') }, [status])
+  useEffect(() => () => wakeLockStore.setWanted(false), [])
 
   // On load, silently bring the remembered belt back (the connection can't survive
   // a page reload, but we can reconnect without prompting).
@@ -281,13 +294,16 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
           <div className="w-8 h-8 rounded-lg bg-black border border-white/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
             <img src="/logo.png" alt="" className="w-full h-full object-contain" />
           </div>
-          <div className="flex-1 min-w-0">
-            <span className="text-white font-semibold text-sm">Barra Austral</span>
-            {username && (
-              <span className="text-cyan-400 text-xs ml-2">@{username}</span>
-            )}
-            <span className="text-gray-600 text-xs ml-2 hidden sm:inline">{today}</span>
-          </div>
+          {status !== 'active' && (
+            <div className="flex-1 min-w-0">
+              <span className="text-white font-semibold text-sm">Barra Austral</span>
+              {username && (
+                <span className="text-cyan-400 text-xs ml-2">@{username}</span>
+              )}
+              <span className="text-gray-600 text-xs ml-2 hidden sm:inline">{today}</span>
+            </div>
+          )}
+          {status === 'active' && <div className="flex-1 min-w-0" />}
 
           {/* Heart-rate belt status — always visible once a belt is paired */}
           {hr.paired && (
@@ -319,6 +335,28 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
             <div className="font-mono text-cyan-400 font-bold text-base tracking-wider">
               {fmtElapsed(elapsed)}
             </div>
+          )}
+
+          {status === 'active' && (
+            <button
+              onClick={() => autoRunStore.toggle()}
+              className={`p-2 rounded-lg transition-colors ${autoRun.enabled ? 'text-emerald-400 bg-emerald-500/15 hover:text-emerald-300' : 'text-gray-600 hover:text-white'}`}
+              title={autoRun.enabled
+                ? 'Modo automático ON — la rutina corre sola; toca para apagar'
+                : 'Modo automático — encadena serie, descanso y siguiente ejercicio solo'}
+            >
+              <Zap size={17} fill={autoRun.enabled ? 'currentColor' : 'none'} />
+            </button>
+          )}
+
+          {status === 'active' && (
+            <button
+              onClick={() => soundStore.toggle()}
+              className={`p-2 rounded-lg transition-colors ${restSound.enabled ? 'text-amber-400 hover:text-amber-300' : 'text-gray-600 hover:text-white'}`}
+              title={restSound.enabled ? 'Rest beep on — tap to mute' : 'Rest beep muted — tap to enable'}
+            >
+              {restSound.enabled ? <Bell size={17} /> : <BellOff size={17} />}
+            </button>
           )}
 
           <button onClick={() => setShowSettings(true)} className="text-gray-600 hover:text-white p-2 rounded-lg transition-colors">
@@ -448,6 +486,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
                     <ExerciseCard
                       key={ex.instanceId ?? idx}
                       exercise={ex}
+                      order={idx}
                       onChange={updated =>
                         setExercises(prev => prev.map((e, i) => (i === idx ? updated : e)))
                       }

@@ -126,7 +126,7 @@ def get_data(username: str = Depends(current_user)):
     s = SessionLocal()
     try:
         user = s.query(User).filter_by(username=username).one()
-        return user_data_to_json(user, s)
+        return user_data_to_json(user)
     finally:
         s.close()
 
@@ -217,7 +217,7 @@ def export_json(username: str = Depends(query_user)):
     s = SessionLocal()
     try:
         user = s.query(User).filter_by(username=username).one()
-        return user_data_to_json(user, s)
+        return user_data_to_json(user)
     finally:
         s.close()
 
@@ -227,7 +227,7 @@ def export_flat(username: str = Depends(query_user)):
     s = SessionLocal()
     try:
         user = s.query(User).filter_by(username=username).one()
-        data = user_data_to_json(user, s)
+        data = user_data_to_json(user)
     finally:
         s.close()
     rows = []
@@ -253,7 +253,7 @@ def export_csv(username: str = Depends(query_user)):
     s = SessionLocal()
     try:
         user = s.query(User).filter_by(username=username).one()
-        data = user_data_to_json(user, s)
+        data = user_data_to_json(user)
     finally:
         s.close()
     output = io.StringIO()

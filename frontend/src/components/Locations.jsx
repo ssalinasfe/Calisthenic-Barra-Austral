@@ -32,8 +32,11 @@ export default function Locations({ allData, token, onDataChange }) {
     try {
       const id = editing.id || newId()
       const newLoc = { id, name, address: (editing.address || '').trim() }
-      const others = locations.filter(l => l.id !== id)
-      const newData = { ...allData, locations: [...others, newLoc] }
+      const exists = locations.some(l => l.id === id)
+      const newLocations = exists
+        ? locations.map(l => (l.id === id ? newLoc : l))   // keep position
+        : [...locations, newLoc]
+      const newData = { ...allData, locations: newLocations }
       await saveData(token, newData)
       onDataChange(newData)
       setEditing(null)

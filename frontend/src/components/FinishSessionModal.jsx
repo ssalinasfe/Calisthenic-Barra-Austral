@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Camera, Image as ImageIcon, Check, X, Square } from 'lucide-react'
-import { uploadPhoto, photoUrl } from '../api'
+import { uploadPhoto, deletePhoto, photoUrl } from '../api'
 
 export default function FinishSessionModal({ token, onCancel, onConfirm }) {
   const cameraRef = useRef(null)
@@ -29,6 +29,14 @@ export default function FinishSessionModal({ token, onCancel, onConfirm }) {
 
   function removePhoto(filename) {
     setPhotos(p => p.filter(n => n !== filename))
+    deletePhoto(token, filename).catch(() => { /* leave file orphaned */ })
+  }
+
+  // Skip/Cancel drop the uploaded photos from the session, so delete the files
+  // too — otherwise they linger on disk unreferenced.
+  function discardUploads(next) {
+    photos.forEach(p => deletePhoto(token, p).catch(() => { /* best effort */ }))
+    next()
   }
 
   async function finish() {
@@ -42,7 +50,7 @@ export default function FinishSessionModal({ token, onCancel, onConfirm }) {
 
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <h2 className="text-white font-bold text-base">Finish session</h2>
-          <button onClick={onCancel} className="text-gray-600 hover:text-white p-2 rounded-lg transition-colors">
+          <button onClick={() => discardUploads(onCancel)} className="text-gray-600 hover:text-white p-2 rounded-lg transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -110,7 +118,7 @@ export default function FinishSessionModal({ token, onCancel, onConfirm }) {
 
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button
-              onClick={() => onConfirm([])}
+              onClick={() => discardUploads(() => onConfirm([]))}
               disabled={saving}
               className="flex items-center justify-center gap-2 bg-white/5 border border-white/10 text-gray-300 py-3 rounded-xl text-sm font-medium hover:bg-white/8 disabled:opacity-50 transition-colors"
             >

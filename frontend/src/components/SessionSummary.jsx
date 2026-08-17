@@ -2,27 +2,26 @@ import { useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer, ComposedChart, Scatter,
+  ReferenceLine, ReferenceArea,
 } from 'recharts'
-import { X, Download, CheckCircle, Clock, Layers, Zap, HeartPulse, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Download, CheckCircle, Clock, Layers, Zap, HeartPulse, ChevronDown, ChevronUp, Maximize2 } from 'lucide-react'
 import { format } from 'date-fns'
-import { setNotation } from '../utils'
+import { setNotation, fmtDuration } from '../utils'
 import { photoUrl } from '../api'
 
-function fmtDuration(secs) {
-  const h = Math.floor(secs / 3600)
-  const m = Math.floor((secs % 3600) / 60)
-  const s = secs % 60
-  if (h > 0) return `${h}h ${m}m`
-  if (m > 0) return `${m}m ${s}s`
-  return `${s}s`
-}
-
+// Same columns as the backend's /api/export/csv, so both CSV paths match.
 function exportCSV(allData) {
-  const rows = [['Date', 'Exercise', 'Set', 'Reps', 'Weight (kg)', 'Duration (s)']]
+  const rows = [[
+    'Date', 'Start time', 'Session duration (s)',
+    'Exercise', 'Category', 'Set', 'Reps', 'Weight (kg)', 'Set duration (s)',
+  ]]
   ;(allData.sessions || []).forEach(session => {
     ;(session.exercises || []).forEach(ex => {
       ;(ex.sets || []).forEach((set, i) => {
-        rows.push([session.date, ex.name, i + 1, set.reps ?? '', set.weight ?? '', set.duration ?? ''])
+        rows.push([
+          session.date, session.startTime ?? '', session.durationSeconds ?? '',
+          ex.name, ex.category ?? '', i + 1, set.reps ?? 0, set.weight ?? '', set.duration ?? 0,
+        ])
       })
     })
   })
@@ -60,10 +59,55 @@ function mmss(secs) {
 const EX_COLORS = ['#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#22d3ee', '#fb923c', '#4ade80']
 const exColor = i => EX_COLORS[i % EX_COLORS.length]
 
+// Ideal fat-burning heart-rate zone (60–70% of max HR ≈ 220 − age). Age 33 → 112–131.
+const FAT_BURN_ZONE = { low: 112, high: 131 }
+
+// The belt is sampled every ~5s, so a hole longer than this is a dropout, not
+// jitter. The chart cuts the line there instead of drawing a straight line
+// across minutes of data that was never measured.
+const HR_GAP_S = 20
+
 // Line dot colored by the exercise it belongs to (payload.color).
 const ExerciseDot = ({ cx, cy, payload, r = 5 }) => {
   if (cx == null || cy == null) return null
   return <circle cx={cx} cy={cy} r={r} fill={payload?.color || '#06b6d4'} stroke="#0a0a0a" strokeWidth={1.5} />
+}
+
+// The heart-rate chart body. `width`/`height` are injected by ResponsiveContainer
+// for the inline version, or passed explicitly (fixed px) for the scrollable
+// expanded view.
+function HrComposedChart({ chart, width, height }) {
+  return (
+    <ComposedChart width={width} height={height} margin={{ top: 10, right: 12, left: -4, bottom: 0 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+      <XAxis
+        dataKey="t" type="number" domain={[0, chart.maxT]} tickFormatter={mmss}
+        tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} allowDuplicatedCategory={false}
+      />
+      <YAxis
+        domain={[
+          (dataMin) => Math.min(Math.floor(dataMin - 5), FAT_BURN_ZONE.low - 5),
+          (dataMax) => Math.max(Math.ceil(dataMax + 5), FAT_BURN_ZONE.high + 5),
+        ]}
+        tick={{ fill: '#6b7280', fontSize: 10 }}
+        axisLine={false} tickLine={false} width={40}
+      />
+      <Tooltip content={<HrTooltip />} />
+      {/* Ideal fat-burning zone */}
+      <ReferenceArea y1={FAT_BURN_ZONE.low} y2={FAT_BURN_ZONE.high} fill="#fbbf24" fillOpacity={0.08} />
+      <ReferenceLine y={FAT_BURN_ZONE.low} stroke="#fbbf24" strokeOpacity={0.7} strokeDasharray="5 4"
+        label={{ value: FAT_BURN_ZONE.low, position: 'insideBottomRight', fill: '#fbbf24', fontSize: 10 }} />
+      <ReferenceLine y={FAT_BURN_ZONE.high} stroke="#fbbf24" strokeOpacity={0.7} strokeDasharray="5 4"
+        label={{ value: FAT_BURN_ZONE.high, position: 'insideTopRight', fill: '#fbbf24', fontSize: 10 }} />
+      <Line data={chart.work} dataKey="bpm" stroke="#f87171" strokeWidth={2.5} dot={false}
+        activeDot={{ r: 5, strokeWidth: 0 }} connectNulls={false} isAnimationActive={false} />
+      <Line data={chart.rest} dataKey="bpm" stroke="#f87171" strokeOpacity={0.65} strokeWidth={2}
+        strokeDasharray="4 5" dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
+      {chart.series.map(s => (
+        <Scatter key={s.name} name={s.name} data={s.points} dataKey="bpm" fill={s.color} line={false} isAnimationActive={false} />
+      ))}
+    </ComposedChart>
+  )
 }
 
 const HrTooltip = ({ active, payload }) => {
@@ -71,7 +115,10 @@ const HrTooltip = ({ active, payload }) => {
   // A rep marker carries { exercise, rep }; the line just has bpm.
   const marker = payload.find(p => p.payload?.exercise)
   const t = payload[0].payload?.t ?? 0
-  const bpm = marker ? marker.payload.bpm : payload[0].value
+  // The trace is split into a solid (work) and a dashed (rest) line, so at any
+  // given second one of the two carries a null.
+  const bpm = marker ? marker.payload.bpm : payload.find(p => p.value != null)?.value
+  if (bpm == null) return null
   return (
     <div className="bg-gray-900 border border-white/10 rounded-xl px-3 py-2 shadow-xl text-sm">
       <p className="text-gray-400 text-xs mb-0.5">{mmss(t)}</p>
@@ -103,24 +150,24 @@ function ExerciseDetailCard({ ex, color }) {
   return (
     <div className="bg-white/5 border border-white/5 rounded-2xl overflow-hidden">
       <button onClick={() => setOpen(o => !o)} className="w-full px-4 py-3 text-left">
-        <div className="flex justify-between items-center gap-2">
-          <span className="flex items-center gap-2 min-w-0">
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
-            <span className="text-white text-sm font-medium truncate">{ex.name}</span>
-          </span>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {exWeight != null && (
-              <span className="text-amber-400/90 text-xs font-mono font-semibold">{exWeight}kg</span>
-            )}
-            {exAvg != null && (
-              <span className="text-red-400/80 text-xs font-mono flex items-center gap-1">
-                <HeartPulse size={11} />{exAvg}<span className="text-gray-600">/{exMax}</span>
-              </span>
-            )}
-            <span className="text-cyan-400 font-mono text-sm font-bold">{setNotation(ex.sets)}</span>
-            <span className="text-gray-600 text-xs">{repsTotal} reps</span>
-            {open ? <ChevronUp size={15} className="text-gray-600" /> : <ChevronDown size={15} className="text-gray-600" />}
-          </div>
+        {/* Row 1: color + full name */}
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
+          <span className="text-white text-sm font-medium flex-1 min-w-0 truncate">{ex.name}</span>
+          {open ? <ChevronUp size={15} className="text-gray-600 flex-shrink-0" /> : <ChevronDown size={15} className="text-gray-600 flex-shrink-0" />}
+        </div>
+        {/* Row 2: data, aligned under the name */}
+        <div className="flex items-center gap-3 mt-1.5 pl-[18px] flex-wrap">
+          {exWeight != null && (
+            <span className="text-amber-400/90 text-xs font-mono font-semibold">{exWeight}kg</span>
+          )}
+          {exAvg != null && (
+            <span className="text-red-400/80 text-xs font-mono flex items-center gap-1">
+              <HeartPulse size={11} />{exAvg}<span className="text-gray-600">/{exMax}</span>
+            </span>
+          )}
+          <span className="text-cyan-400 font-mono text-sm font-bold">{setNotation(ex.sets)}</span>
+          <span className="text-gray-600 text-xs">{repsTotal} reps</span>
         </div>
       </button>
 
@@ -159,6 +206,7 @@ function ExerciseDetailCard({ ex, color }) {
 }
 
 export default function SessionSummary({ session, allData, onClose, token, heading = 'Session complete' }) {
+  const [hrExpanded, setHrExpanded] = useState(false)
   const chartData = useMemo(() => {
     const pastSessions = (allData.sessions || []).filter(s => s.id !== session.id)
     return session.exercises.map((ex, i) => {
@@ -206,10 +254,80 @@ export default function SessionSummary({ session, allData, onClose, token, headi
         })
       return { name: ex.name, color: exColor(ei), points }
     }).filter(s => s.points.length)
-    return { samples, maxT, series }
+
+    // Rest windows, in seconds from the session start: each set's rest runs from
+    // the moment the set ended until restDuration later.
+    const rests = []
+    session.exercises.forEach(ex => (ex.sets || []).forEach(set => {
+      if (!set.startedAt || !set.restDuration) return
+      const from = Math.round((new Date(set.startedAt).getTime() - startMs) / 1000) + (set.duration || 0)
+      rests.push([from, from + set.restDuration])
+    }))
+    const isResting = t => rests.some(([a, b]) => t >= a && t <= b)
+
+    // The trace is drawn as two overlapping lines — solid for work, dashed for
+    // rest — by nulling out each other's samples, because Recharts can't dash
+    // part of a single Line.
+    //
+    // Classify each SEGMENT by its midpoint (not each point), so every segment
+    // belongs to exactly one line: no gaps, and nothing drawn twice. Doing it
+    // per point and extending to the neighbours swallowed short work windows —
+    // a 47s set holding only 2 samples has both of them on a boundary, so the
+    // dashed line covered the whole thing.
+    const segRest = []
+    for (let i = 0; i < samples.length - 1; i++) {
+      segRest[i] = isResting((samples[i].t + samples[i + 1].t) / 2)
+    }
+    // Walk the segments and emit only the runs this line owns, separated by an
+    // explicit null so Recharts breaks the path there. Tagging the shared points
+    // in a sample-aligned array can't work: a lone rest segment between two work
+    // segments needs both its endpoints in the solid line, which would draw it
+    // twice — the dashes then sit on top of a solid stroke and hide it.
+    // Segments bridging a belt dropout belong to neither line: they get dropped
+    // by both, which leaves the hole visible instead of inventing a reading.
+    const isGap = i => samples[i + 1].t - samples[i].t > HR_GAP_S
+
+    const lineFor = wantRest => {
+      const out = []
+      let open = false
+      for (let i = 0; i < segRest.length; i++) {
+        if (segRest[i] !== wantRest || isGap(i)) { open = false; continue }
+        if (!open) {
+          if (out.length) out.push({ t: samples[i].t, bpm: null })
+          out.push(samples[i])
+          open = true
+        }
+        out.push(samples[i + 1])
+      }
+      return out
+    }
+    const work = lineFor(false)
+    const rest = lineFor(true)
+    const gaps = segRest.filter((_, i) => isGap(i)).length
+    return { samples, maxT, series, work, rest, hasRest: rests.length > 0, gaps }
+  }, [session])
+
+  // Time distribution vs the fat-burning zone, from the HR samples (each sample ≈
+  // equal time). Below / inside / above the 112–131 band.
+  const hrZone = useMemo(() => {
+    const s = session.hrSamples || []
+    if (s.length < 2) return null
+    let below = 0, inside = 0, above = 0
+    s.forEach(p => {
+      if (p.bpm > FAT_BURN_ZONE.high) above++
+      else if (p.bpm >= FAT_BURN_ZONE.low) inside++
+      else below++
+    })
+    const n = s.length
+    return {
+      inPct: Math.round((inside / n) * 100),
+      abovePct: Math.round((above / n) * 100),
+      belowPct: Math.round((below / n) * 100),
+    }
   }, [session])
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/75 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fadeIn">
       <div className="bg-gray-950 border border-white/10 rounded-t-3xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl">
 
@@ -269,16 +387,35 @@ export default function SessionSummary({ session, allData, onClose, token, headi
           </div>
 
           {session.avgHr != null && (
-            <div className="bg-red-500/10 border border-red-500/25 rounded-2xl px-4 py-3 flex items-center gap-4">
-              <HeartPulse size={20} className="text-red-400 flex-shrink-0" />
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-red-400 font-mono">{session.avgHr}</span>
-                <span className="text-red-300/70 text-xs">bpm avg</span>
+            <div className="bg-red-500/10 border border-red-500/25 rounded-2xl px-4 py-3">
+              <div className="flex items-center gap-4">
+                <HeartPulse size={20} className="text-red-400 flex-shrink-0" />
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-red-400 font-mono">{session.avgHr}</span>
+                  <span className="text-red-300/70 text-xs">bpm avg</span>
+                </div>
+                <div className="flex-1 flex justify-end gap-4 text-xs text-gray-500">
+                  {session.maxHr != null && <span>max <b className="text-gray-300">{session.maxHr}</b></span>}
+                  {session.minHr != null && <span>min <b className="text-gray-300">{session.minHr}</b></span>}
+                </div>
               </div>
-              <div className="flex-1 flex justify-end gap-4 text-xs text-gray-500">
-                {session.maxHr != null && <span>max <b className="text-gray-300">{session.maxHr}</b></span>}
-                {session.minHr != null && <span>min <b className="text-gray-300">{session.minHr}</b></span>}
-              </div>
+
+              {hrZone && (
+                <div className="mt-3 pt-3 border-t border-red-500/15">
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="text-gray-500">Below <b>{hrZone.belowPct}%</b></span>
+                    <span className="text-amber-300">In zone <b>{hrZone.inPct}%</b></span>
+                    <span className="text-red-300">Above <b>{hrZone.abovePct}%</b></span>
+                  </div>
+                  {/* Stacked bar: below · in-zone · above */}
+                  <div className="flex h-2 rounded-full overflow-hidden bg-white/5">
+                    <div style={{ width: `${hrZone.belowPct}%` }} className="bg-gray-500/50" />
+                    <div style={{ width: `${hrZone.inPct}%` }} className="bg-amber-400/80" />
+                    <div style={{ width: `${hrZone.abovePct}%` }} className="bg-red-500/70" />
+                  </div>
+                  <p className="text-gray-600 text-[10px] mt-1.5">vs fat-burning zone {FAT_BURN_ZONE.low}–{FAT_BURN_ZONE.high} bpm</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -316,56 +453,33 @@ export default function SessionSummary({ session, allData, onClose, token, headi
 
           {hrChart && (
             <div>
-              <h3 className="text-white font-semibold mb-3 text-sm flex items-center gap-1.5">
-                <HeartPulse size={15} className="text-red-400" />
-                Heart rate over the session
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-white font-semibold text-sm flex items-center gap-1.5">
+                  <HeartPulse size={15} className="text-red-400" />
+                  Heart rate over the session
+                </h3>
+                <button
+                  onClick={() => setHrExpanded(true)}
+                  className="flex items-center gap-1 text-gray-500 hover:text-white text-xs font-medium px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
+                >
+                  <Maximize2 size={13} /> Expand
+                </button>
+              </div>
               <div className="bg-white/3 rounded-2xl p-4 border border-white/5">
                 <ResponsiveContainer width="100%" height={190}>
-                  <ComposedChart margin={{ top: 10, right: 10, left: -4, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                    <XAxis
-                      dataKey="t"
-                      type="number"
-                      domain={[0, hrChart.maxT]}
-                      tickFormatter={mmss}
-                      tick={{ fill: '#6b7280', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      allowDuplicatedCategory={false}
-                    />
-                    <YAxis
-                      domain={['dataMin - 5', 'dataMax + 5']}
-                      tick={{ fill: '#6b7280', fontSize: 10 }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={40}
-                    />
-                    <Tooltip content={<HrTooltip />} />
-                    <Line
-                      data={hrChart.samples}
-                      dataKey="bpm"
-                      stroke="#f87171"
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 5, strokeWidth: 0 }}
-                      isAnimationActive={false}
-                    />
-                    {hrChart.series.map(s => (
-                      <Scatter
-                        key={s.name}
-                        name={s.name}
-                        data={s.points}
-                        dataKey="bpm"
-                        fill={s.color}
-                        line={false}
-                        isAnimationActive={false}
-                      />
-                    ))}
-                  </ComposedChart>
+                  <HrComposedChart chart={hrChart} />
                 </ResponsiveContainer>
                 {/* Legend: color per exercise */}
                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 px-1">
+                  {hrChart.hasRest && (
+                    <span className="flex items-center gap-1.5 text-[11px] text-gray-500 w-full mb-0.5">
+                      <svg width="22" height="4" className="flex-shrink-0">
+                        <line x1="0" y1="2" x2="22" y2="2" stroke="#f87171" strokeOpacity="0.65" strokeWidth="2" strokeDasharray="4 5" />
+                      </svg>
+                      línea punteada = descanso
+                      {hrChart.gaps > 0 && ' · cortes = sin señal de la banda'}
+                    </span>
+                  )}
                   {hrChart.series.map(s => (
                     <span key={s.name} className="flex items-center gap-1.5 text-xs text-gray-400">
                       <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: s.color }} />
@@ -373,7 +487,9 @@ export default function SessionSummary({ session, allData, onClose, token, headi
                     </span>
                   ))}
                 </div>
-                <p className="text-gray-600 text-[11px] mt-2 px-1">Each dot marks the start of a rep — tap it for the exercise.</p>
+                <p className="text-gray-600 text-[11px] mt-2 px-1">
+                  Amber band ({FAT_BURN_ZONE.low}–{FAT_BURN_ZONE.high}) = fat-burning zone · tap Expand to scroll & inspect.
+                </p>
               </div>
             </div>
           )}
@@ -397,5 +513,40 @@ export default function SessionSummary({ session, allData, onClose, token, headi
         </div>
       </div>
     </div>
+
+    {/* Expanded, scrollable heart-rate chart */}
+    {hrExpanded && hrChart && (
+      <div className="fixed inset-0 bg-gray-950 z-[60] flex flex-col animate-fadeIn">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 flex-shrink-0">
+          <h3 className="text-white font-semibold text-sm flex items-center gap-1.5">
+            <HeartPulse size={15} className="text-red-400" /> Heart rate over the session
+          </h3>
+          <button onClick={() => setHrExpanded(false)} className="text-gray-400 hover:text-white p-2 rounded-lg">
+            <X size={20} />
+          </button>
+        </div>
+        <p className="text-gray-500 text-xs px-4 py-2 flex-shrink-0">
+          Swipe sideways to inspect · tap a dot for the exercise
+          {hrChart.hasRest && ' · línea punteada = descanso'}
+          {hrChart.gaps > 0 && ' · cortes = sin señal de la banda'}
+        </p>
+        <div className="flex-1 overflow-x-auto overflow-y-hidden overscroll-contain">
+          <HrComposedChart
+            chart={hrChart}
+            width={Math.max(typeof window !== 'undefined' ? window.innerWidth - 8 : 700, Math.round(hrChart.maxT * 0.7))}
+            height={typeof window !== 'undefined' ? Math.round(window.innerHeight * 0.62) : 420}
+          />
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 p-4 border-t border-white/10 flex-shrink-0">
+          {hrChart.series.map(s => (
+            <span key={s.name} className="flex items-center gap-1.5 text-xs text-gray-400">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: s.color }} />
+              {s.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+    </>
   )
 }

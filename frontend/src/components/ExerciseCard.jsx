@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, X, Square, ChevronDown, ChevronUp, Pause, Play, StopCircle, Pencil, Search, Check, HeartPulse } from 'lucide-react'
-import { EXERCISES, CATEGORY_LABEL } from '../exercises'
+import { EXERCISES, CATEGORY_LABEL, isIsometric } from '../exercises'
+import { fmtDuration } from '../utils'
 import { useHeartRate } from '../heartRate'
+import { soundStore } from '../sound'
+import { useAutoRun, registerCard, announceSetStart, scheduleAdvance } from '../autoRun'
 
 function fmt(secs) {
   const m = Math.floor(secs / 60)
@@ -9,28 +12,80 @@ function fmt(secs) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+// Isometric holds (Plank, Passive Hang…) get a 5s "get into position" countdown
+// before the hold timer starts, so setup time doesn't count toward the hold.
+const PREP_SECONDS = 5
+
+// Index of the last completed set (a set is completed once it has a duration).
+function lastCompletedIdx(sets) {
+  for (let i = sets.length - 1; i >= 0; i--) {
+    if (sets[i].duration !== null) return i
+  }
+  return -1
+}
+
 // ── Active set timer ──────────────────────────────────────────────────────────
-function ActiveSet({ set, index, onStop }) {
+function ActiveSet({ set, index, onStop, isometric, autoStopAt }) {
+  const [phase, setPhase] = useState(isometric ? 'prep' : 'active')
+  const [prepLeft, setPrepLeft] = useState(PREP_SECONDS)
   const [elapsed, setElapsed] = useState(0)
   const hr = useHeartRate()
   const hrAccRef = useRef([])   // bpm readings collected during this set
+  const activeStartRef = useRef(isometric ? null : new Date(set.startedAt).getTime())
+  const autoStoppedRef = useRef(false)
+
+  // Prep countdown (isometric only): ticks down 5→1, then switches to 'active'.
+  useEffect(() => {
+    if (phase !== 'prep') return
+    const id = setTimeout(() => {
+      if (prepLeft <= 1) {
+        activeStartRef.current = Date.now()
+        soundStore.playBeep()
+        setPhase('active')
+      } else {
+        setPrepLeft(p => p - 1)
+      }
+    }, 1000)
+    return () => clearTimeout(id)
+  }, [phase, prepLeft])
 
   useEffect(() => {
-    const start = new Date(set.startedAt).getTime()
+    if (phase !== 'active') return
+    const start = activeStartRef.current
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 100)
     return () => clearInterval(id)
-  }, [set.startedAt])
+  }, [phase])
 
-  // Accumulate live bpm while this set is running (full resolution, ~1/s).
+  // Isometric holds: a tick every 10s while the hold is running, so the user
+  // can track time without watching the screen.
   useEffect(() => {
-    if (hr.status === 'connected' && hr.bpm != null) hrAccRef.current.push(hr.bpm)
-  }, [hr.lastAt, hr.status, hr.bpm])
+    if (!isometric || phase !== 'active') return
+    if (elapsed > 0 && elapsed % 10 === 0) soundStore.playTick()
+  }, [isometric, phase, elapsed])
+
+  // Accumulate live bpm while the hold is actually running (full resolution, ~1/s).
+  useEffect(() => {
+    if (phase === 'active' && hr.status === 'connected' && hr.bpm != null) hrAccRef.current.push(hr.bpm)
+  }, [hr.lastAt, hr.status, hr.bpm, phase])
+
+  // Auto mode: count the last 3 seconds down, then beep and press Stop for the
+  // user when the routine's work interval is up.
+  useEffect(() => {
+    if (!autoStopAt || phase !== 'active' || autoStoppedRef.current) return
+    const left = autoStopAt - elapsed
+    if (left > 0 && left <= 3) { soundStore.playTick(); return }
+    if (left <= 0) {
+      autoStoppedRef.current = true
+      soundStore.playBeep()
+      stop()
+    }
+  }, [autoStopAt, phase, elapsed])
 
   function stop() {
     const bpms = hrAccRef.current
     const hrStats = bpms.length
       ? {
-          startHr: bpms[0],   // pulse at the moment "Start" was pressed
+          startHr: bpms[0],   // pulse at the moment the hold actually started
           avgHr: Math.round(bpms.reduce((a, b) => a + b, 0) / bpms.length),
           maxHr: Math.max(...bpms),
         }
@@ -38,13 +93,38 @@ function ActiveSet({ set, index, onStop }) {
     onStop(elapsed, hrStats)
   }
 
+  function skipPrep() {
+    activeStartRef.current = Date.now()
+    soundStore.playBeep()
+    setPhase('active')
+  }
+
   const live = hr.status === 'connected' && hr.bpm != null
+
+  if (phase === 'prep') {
+    return (
+      <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5 animate-fadeIn">
+        <span className="text-amber-300 text-xs flex-1">Prepárate…</span>
+        <span className="text-amber-300 font-mono text-xl font-bold tracking-wider">
+          {prepLeft}
+        </span>
+        <button
+          onClick={skipPrep}
+          className="text-amber-400/80 hover:text-amber-300 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors"
+        >
+          Skip
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-3 bg-cyan-500/10 border border-cyan-500/30 rounded-xl px-3 py-2.5 animate-fadeIn">
-      <span className="text-gray-600 text-xs w-5 text-center font-mono">{index + 1}</span>
       <span className="text-cyan-300 font-mono text-xl font-bold flex-1 tracking-wider">
         {fmt(elapsed)}
+        {autoStopAt > 0 && (
+          <span className="text-cyan-300/40 text-sm font-normal"> / {fmt(autoStopAt)}</span>
+        )}
       </span>
       {live && (
         <span className="flex items-center gap-1 text-red-400 font-mono text-base font-bold">
@@ -64,8 +144,9 @@ function ActiveSet({ set, index, onStop }) {
 }
 
 // ── Rest timer ────────────────────────────────────────────────────────────────
-function RestTimer({ rest, onPause, onResume, onStop }) {
+function RestTimer({ rest, targetSeconds, onPause, onResume, onStop, onAutoDone }) {
   const [elapsed, setElapsed] = useState(rest.elapsed)
+  const beepedRef = useRef(false)
 
   useEffect(() => {
     if (rest.paused) { setElapsed(rest.elapsed); return }
@@ -76,11 +157,34 @@ function RestTimer({ rest, onPause, onResume, onStop }) {
     return () => clearInterval(id)
   }, [rest])
 
+  // Tick down the last 3 seconds of the rest, same cue as the work interval,
+  // so you know the next set is coming without watching the screen.
+  useEffect(() => {
+    if (!targetSeconds || rest.paused || beepedRef.current) return
+    const left = targetSeconds - elapsed
+    if (left > 0 && left <= 3) soundStore.playTick()
+  }, [elapsed, targetSeconds, rest.paused])
+
+  // Beep once when the routine's target rest is reached. In auto mode that
+  // same moment ends the rest and hands over to the next exercise.
+  useEffect(() => {
+    if (!targetSeconds || beepedRef.current) return
+    if (elapsed >= targetSeconds) {
+      beepedRef.current = true
+      soundStore.playBeep()
+      if (onAutoDone) onAutoDone()
+    }
+  }, [elapsed, targetSeconds, onAutoDone])
+
+  const done = targetSeconds > 0 && elapsed >= targetSeconds
+
   return (
-    <div className="flex items-center gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3 py-2.5 animate-fadeIn">
+    <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 animate-fadeIn border transition-colors ${
+      done ? 'bg-emerald-500/8 border-emerald-500/30' : 'bg-amber-500/8 border-amber-500/20'
+    }`}>
       <span className="text-amber-400/60 text-xs w-5 text-center">💤</span>
       <span className="text-amber-300 text-xs flex-1">Descanso</span>
-      <span className={`font-mono text-base font-bold ${rest.paused ? 'text-gray-500' : 'text-amber-300'}`}>
+      <span className={`font-mono text-base font-bold ${rest.paused ? 'text-gray-500' : done ? 'text-emerald-400' : 'text-amber-300'}`}>
         {fmt(elapsed)}
       </span>
       {rest.paused ? (
@@ -101,7 +205,7 @@ function RestTimer({ rest, onPause, onResume, onStop }) {
         </button>
       )}
       <button
-        onClick={() => onStop(elapsed)}
+        onClick={onStop}
         className="text-gray-600 hover:text-red-400 p-1.5 rounded-lg transition-colors"
         title="End rest"
       >
@@ -127,9 +231,8 @@ function CompletedSet({ set, index, onUpdateReps, onUpdateWeight, onDelete }) {
 
   return (
     <div className="flex items-center gap-3 bg-white/5 rounded-xl px-3 py-2.5 animate-fadeIn">
-      <span className="text-gray-600 text-xs w-5 text-center font-mono">{index + 1}</span>
       <span className="text-gray-500 font-mono text-xs w-14">{fmt(set.duration)}</span>
-      <div className="flex items-center gap-1.5 flex-1">
+      <div className="flex-1">
         <input
           type="number"
           value={reps}
@@ -140,28 +243,29 @@ function CompletedSet({ set, index, onUpdateReps, onUpdateWeight, onDelete }) {
           min="1"
           className="w-14 bg-white/10 text-white rounded-lg px-2 py-1 text-sm text-center outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
         />
-        <span className="text-gray-600 text-xs">reps</span>
       </div>
-      <div className="flex items-center gap-1.5">
-        <input
-          type="number"
-          value={weight}
-          onChange={e => setWeight(e.target.value)}
-          onBlur={e => commitWeight(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && commitWeight(weight)}
-          placeholder="—"
-          min="0"
-          step="0.5"
-          className="w-14 bg-white/10 text-white rounded-lg px-2 py-1 text-sm text-center outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
-        />
-        <span className="text-gray-600 text-xs">kg</span>
-      </div>
+      <input
+        type="number"
+        value={weight}
+        onChange={e => setWeight(e.target.value)}
+        onBlur={e => commitWeight(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && commitWeight(weight)}
+        placeholder="—"
+        min="0"
+        step="0.5"
+        className="w-14 bg-white/10 text-white rounded-lg px-2 py-1 text-sm text-center outline-none focus:ring-1 focus:ring-cyan-500 transition-colors"
+      />
       {set.avgHr != null && (
         <span
           title={`Heart rate — ${set.startHr != null ? `start ${set.startHr} · ` : ''}avg ${set.avgHr}${set.maxHr != null ? ` · max ${set.maxHr}` : ''} bpm`}
           className="text-red-400/80 text-xs font-mono flex items-center gap-0.5 flex-shrink-0"
         >
           <HeartPulse size={11} />{set.avgHr}
+          {/* Peak next to the average — the title tooltip is useless on a phone.
+              Hidden when both match (a single reading), it would just be noise. */}
+          {set.maxHr != null && set.maxHr !== set.avgHr && (
+            <span className="text-red-400/50">/{set.maxHr}</span>
+          )}
         </span>
       )}
       {set.restDuration > 0 && (
@@ -255,13 +359,21 @@ function NameEditor({ exercise, onChange }) {
 }
 
 // ── Main exercise card ────────────────────────────────────────────────────────
-export default function ExerciseCard({ exercise, onChange, onRemove }) {
+export default function ExerciseCard({ exercise, onChange, onRemove, order }) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeIdx, setActiveIdx] = useState(null)
+  const auto = useAutoRun()
+  const rootRef = useRef(null)
   // rest: { startedAt: ISO, paused: bool, elapsed: number } | null
   const [rest, setRest] = useState(null)
   const restRef = useRef(rest)
   restRef.current = rest
+
+  // Latest props, so finishRest() works when fired from another card's event.
+  const exerciseRef = useRef(exercise)
+  exerciseRef.current = exercise
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
 
   function getCurrentRestElapsed() {
     const r = restRef.current
@@ -274,17 +386,56 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
   function setsWithRest(sets) {
     const restDuration = getCurrentRestElapsed()
     if (!restDuration) return sets
-    // Find last completed set
-    let lastIdx = -1
-    for (let i = sets.length - 1; i >= 0; i--) {
-      if (sets[i].duration !== null) { lastIdx = i; break }
-    }
+    const lastIdx = lastCompletedIdx(sets)
     if (lastIdx < 0) return sets
     return sets.map((s, i) => i === lastIdx ? { ...s, restDuration } : s)
   }
 
+  // Stop the running rest and persist it. Used by the Stop button and by a set
+  // starting on any other card.
+  function finishRest() {
+    if (!restRef.current) return
+    const ex = exerciseRef.current
+    const newSets = setsWithRest(ex.sets)
+    setRest(null)
+    if (newSets !== ex.sets) onChangeRef.current({ ...ex, sets: newSets })
+  }
+
+  // Rest ran its full target with auto mode on → hand over to the next set.
+  function autoFinishRest() {
+    finishRest()
+    scheduleAdvance(cardRef.current)
+  }
+
+  // Auto mode starting a set here: uncollapse and scroll to it, so the phone
+  // always shows the exercise that is actually running.
+  function autoStartSet() {
+    setCollapsed(false)
+    rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    addSet()
+  }
+
+  // Live descriptor read by autoRun.js (see registerCard). Rewritten on every
+  // render — the object identity stays put, the values are always current.
+  const cardRef = useRef({})
+  const ownerRef = useRef({})
+  Object.assign(cardRef.current, {
+    order,
+    group: exercise.supersetGroup ?? null,
+    targetSets: exercise.targetSets || 1,
+    completed: exercise.sets.filter(s => s.duration !== null).length,
+    running: activeIdx !== null,
+    resting: rest != null,
+    startSet: autoStartSet,
+    finishRest,
+  })
+  useEffect(() => registerCard(ownerRef.current, cardRef.current), [])
+
   function addSet() {
     if (activeIdx !== null) return
+
+    // A set starting here ends any rest running on another exercise.
+    announceSetStart(ownerRef.current)
 
     // Finalise rest → save to last set
     let currentSets = rest ? setsWithRest(exercise.sets) : [...exercise.sets]
@@ -309,6 +460,9 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
     setActiveIdx(null)
     // Start rest timer
     setRest({ startedAt: new Date().toISOString(), paused: false, elapsed: 0 })
+    // With no rest target there is nothing to wait for: chain straight into the
+    // next set. Otherwise RestTimer calls autoFinishRest() when the rest is up.
+    if (auto.enabled && !(exercise.restSeconds > 0)) scheduleAdvance(cardRef.current)
   }
 
   function pauseRest() {
@@ -317,20 +471,6 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
 
   function resumeRest() {
     setRest(r => ({ ...r, startedAt: new Date().toISOString(), paused: false }))
-  }
-
-  function stopRest(elapsed) {
-    // Save rest to last completed set
-    const restDuration = elapsed
-    let lastIdx = -1
-    for (let i = exercise.sets.length - 1; i >= 0; i--) {
-      if (exercise.sets[i].duration !== null) { lastIdx = i; break }
-    }
-    if (lastIdx >= 0) {
-      const newSets = exercise.sets.map((s, i) => i === lastIdx ? { ...s, restDuration } : s)
-      onChange({ ...exercise, sets: newSets })
-    }
-    setRest(null)
   }
 
   function updateReps(idx, reps) {
@@ -351,7 +491,7 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
   const totalReps = completedSets.reduce((sum, s) => sum + (s.reps || 0), 0)
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden animate-fadeIn">
+    <div ref={rootRef} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden animate-fadeIn">
       {/* Routine target banner (only when this exercise comes from a routine) */}
       {(exercise.tempo || exercise.targetReps || exercise.targetSets || exercise.timeSeconds || exercise.type === 'machine') && (
         <div className="bg-cyan-500/8 border-b border-cyan-500/15 px-4 py-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
@@ -368,7 +508,7 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
             <span className="text-gray-400">resistance <span className="text-white font-semibold">{exercise.resistance}</span></span>
           )}
           {exercise.restSeconds != null && exercise.restSeconds > 0 && (
-            <span className="text-amber-300/80">rest <span className="font-mono">{exercise.restSeconds}s</span></span>
+            <span className="text-amber-300/80">rest <span className="font-mono">{fmtDuration(exercise.restSeconds)}</span></span>
           )}
         </div>
       )}
@@ -395,9 +535,24 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
 
       {!collapsed && (
         <div className="px-4 pb-4 space-y-2">
+          {exercise.sets.length > 0 && (
+            <div className="flex items-center gap-3 px-3 text-gray-600 text-[10px] uppercase tracking-wider">
+              <span className="w-14" />
+              <div className="flex-1"><span className="block w-14 text-center">reps</span></div>
+              <span className="w-14 text-center">kg</span>
+              <span className="w-6" />
+            </div>
+          )}
           {exercise.sets.map((set, idx) =>
             set.duration === null ? (
-              <ActiveSet key={set.id} set={set} index={idx} onStop={(dur, hrStats) => stopSet(idx, dur, hrStats)} />
+              <ActiveSet
+                key={set.id}
+                set={set}
+                index={idx}
+                isometric={isIsometric(exercise.name)}
+                autoStopAt={auto.enabled && exercise.timeSeconds > 0 ? exercise.timeSeconds : null}
+                onStop={(dur, hrStats) => stopSet(idx, dur, hrStats)}
+              />
             ) : (
               <CompletedSet
                 key={set.id}
@@ -414,9 +569,11 @@ export default function ExerciseCard({ exercise, onChange, onRemove }) {
           {rest && activeIdx === null && (
             <RestTimer
               rest={rest}
+              targetSeconds={exercise.restSeconds}
               onPause={pauseRest}
               onResume={resumeRest}
-              onStop={stopRest}
+              onStop={finishRest}
+              onAutoDone={auto.enabled ? autoFinishRest : null}
             />
           )}
 

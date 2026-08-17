@@ -62,8 +62,13 @@ function SessionRow({ session, locations, onEdit }) {
   const [expanded, setExpanded] = useState(false)
   const repsTotal = session.exercises.reduce((sum, ex) => sum + totalReps(ex.sets), 0)
   // Muscle groups for this session (user's selection, or inferred for legacy
-  // sessions) → blended pill / "Full Body". Cardio excluded.
-  const cats = sessionCategories(session)
+  // sessions) → blended pill / "Full Body". Cardio only shows when it's the
+  // ONLY thing trained (same rule as the calendar cells).
+  let cats = sessionCategories(session)
+  if (cats.length === 0 && (
+    (session.categories || []).includes('Remo') ||
+    (session.exercises || []).some(ex => ex.category === 'Remo')
+  )) cats = ['Remo']
   const label = groupLabel(cats)
   const fullBody = isFullBody(cats)
   const pillClass = cats.length === 1 ? (CATEGORY_PILL[cats[0]] || CATEGORY_PILL.Custom) : ''
