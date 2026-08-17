@@ -932,8 +932,135 @@ docker exec barra-austral-db pg_dump -U calistia -d calistia > backup_calistia_$
   - Si algún día el muestreo deja de ser regular (la banda peor: la sesión del
     14-ago ya tiene solo 80% de intervalos de 5s y ahí la ponderación daba −2),
     reconsiderar. Las fórmulas quedaron explicadas en el hilo con el usuario.
+  - (ver también la entrada de guardado incremental, más abajo)
   - Verificado con el `useMemo` real extraído del .jsx contra las 5 sesiones con
     pulso: los porcentajes suman 100–101 (redondeo de 3 valores independientes,
     esperado). **Cobertura muy variable**: 86%, 89%, 77%, **25%**, 50% — la del
     14-ago con 25% tiene un "34% en zona" prácticamente sin sentido, y ahora se
     ve. · `SessionSummary.jsx`
+- [2026-08-14] **Guardado incremental: se acabó el blob todo-o-nada.** Pedido del
+  usuario ("no hay razón para enviar la info repetida si ya está en la db").
+  Antes, CADA guardado borraba y reinsertaba **1.016 filas** de `cuyi` (40
+  sesiones, 217 ejercicios de sesión, 613 series, 17 rutinas, 129 ejercicios de
+  rutina) para agregar una sola sesión.
+  - **`POST /api/sessions`** (upsert de UNA sesión) y **`DELETE /api/sessions/{id}`**.
+    `upsert_session()` borra solo la fila con esa id y reescribe; `write_session()`
+    se extrajo de `replace_user_data` y lo comparten ambos caminos.
+  - **`POST /api/data` ahora es PARCIAL**: solo reemplaza las colecciones
+    presentes en el payload. `{"routines": [...]}` no toca sesiones. Esto mata el
+    problema de "la pestaña vieja gana" para todo lo que no sea su propia
+    colección.
+  - Frontend: `finalizeSession` y el editor de sesión usan `saveSession`/
+    `deleteSession`; `Routines` manda `{routines}`, `Locations` manda
+    `{locations}`. **El borrado de ubicación ya no manda sesiones**: la FK
+    `location_id` es `ON DELETE SET NULL`, la BD limpia sola. El único que sigue
+    mandando el blob completo es la migración de formato al cargar, que es
+    correcto porque reescribe todo a la vez.
+  - `upsert_session` exige `id` **y `startTime`** → 400. Sin esa guarda, un
+    payload malo borraba la fila y fallaba el insert por `NOT NULL`, devolviendo
+    un 500 opaco (la transacción sí revertía bien).
+  - Verificado contra la API: upsert crea (+1 sesión, resto intacto), actualiza
+    sin duplicar, payload inválido da 400, `{"routines":[]}` deja las 40 sesiones
+    intactas, DELETE borra y el segundo DELETE da 404.
+- [2026-08-14] **Pulso a resolución completa + todo lo que manda el sensor.**
+  - Se eliminó el diezmado de 1 muestra/5s: ahora se guarda **cada lectura**
+    (~1/s, una por segundo como máximo). Esto arregla de paso que el `maxHr` de
+    la sesión se calculaba sobre la serie diezmada y podía perderse el peak real.
+  - **`parseHeartRate` ahora lee el paquete GATT completo**, no solo el bpm:
+    bit 2/1 de flags = **contacto con la piel**, bit 3 = energía (se salta),
+    bit 4 = **intervalos RR** (unidades de 1/1024 s → se guardan en ms enteros,
+    son la base de la variabilidad cardíaca). En el estado: `contact` y `rr`.
+  - En la muestra solo se guarda `contact` **cuando es false** y `rr` cuando
+    viene: la ausencia significa normal, y así no se paga bytes por lo esperable.
+  - **Nuevos eventos `contact-lost`/`contact-ok`** en el log — es el diagnóstico
+    directo que faltaba para los tramos "conectada pero muda". Etiquetados en
+    `SessionLogModal`.
+  - El espejo a `localStorage` pasó a ser **cada 5s como máximo** (`hrFlushRef`):
+    a resolución completa el arreglo llega a decenas de KB y serializarlo cada
+    segundo en el celular no vale 4 segundos extra de protección.
+  - Las dos cosas se habilitan mutuamente: guardar por sesión abarata justo lo
+    que encarece guardar el pulso completo.
+- [2026-08-14] **INCIDENTE: borré las 17 rutinas de `cuyi` probando.** Al testear
+  la semántica parcial mandé `POST /api/data {"routines":[]}` **contra la BD real**
+  — que es exactamente lo que el endpoint debe hacer: reemplazar las rutinas por
+  la lista vacía. Restauradas las 17 + 129 ejercicios desde
+  `backup_calistia_20260814_014533.sql` (parseando los bloques COPY del pg_dump);
+  conteos verificados contra los de antes del incidente y Misión Rusa intacta.
+  **Lección: `seed_cuyi_routines` solo repone 15** — el combo y Misión Rusa los
+  creó el usuario y NO están en el seeder, así que un reinicio no los recupera.
+  **Nunca probar payloads destructivos contra los datos reales**: crear un usuario
+  de prueba, o mandar de vuelta la colección real en vez de `[]`.
+- [2026-08-14] **Análisis de HRV en el resumen de sesión.** Nuevo
+  `frontend/src/hrv.js` + panel al final de `SessionSummary`.
+  - **Métricas de dominio temporal**: RMSSD (la principal, tono vagal a corto
+    plazo), SDNN, pNN50, RR medio. NO se hizo dominio de frecuencia (LF/HF):
+    exige minutos de señal estacionaria que un entrenamiento nunca da.
+  - **Se mide en los DESCANSOS, no en toda la sesión.** La variabilidad se
+    desploma bajo esfuerzo por diseño, así que un número global mide sobre todo
+    cuánto de la sesión fue dura, no la recuperación. Si el reposo no junta
+    suficientes latidos cae a la sesión completa y **lo dice en pantalla**
+    (`scope`), no lo hace pasar por lo otro.
+  - **Filtrado de artefactos** (crítico, una correa que se mueve genera muchos):
+    se descartan RR fuera de 300–2000 ms y los que saltan >20% respecto del
+    anterior aceptado. **Un latido rechazado CORTA la corrida**: RMSSD son
+    diferencias sucesivas, y puentear un latido eliminado inventaría una
+    diferencia entre dos latidos que nunca fueron vecinos. Mínimo 20 latidos o
+    devuelve `null`.
+  - Se muestra cuántos latidos respaldan el número y cuántos se descartaron, y
+    que se compara contra las propias sesiones, no contra un valor de
+    referencia. **No se interpreta la cifra** (las normas de HRV varían
+    demasiado entre personas).
+  - `restWindows(session)` se extrajo a nivel de módulo: la comparten el gráfico
+    (que las puntea) y el HRV (que mide dentro). **Ventana inclusiva en ambos
+    extremos**, así que puede entrar una muestra de esfuerzo justo en el borde;
+    el filtro de salto la aísla y no contamina el RMSSD (verificado).
+  - Verificado con el código real en node: serie alternante 800/850 da RMSSD
+    exactamente 50; serie constante da 0; dos artefactos (120 y 2500 ms) se
+    descartan **sin alterar el RMSSD**; <20 latidos y sin datos dan `null`; un
+    salto de 800→1100 se rechaza; y el memo cruzado con las ventanas usa solo
+    los latidos del descanso (122 de 282).
+  - **Ninguna sesión existente tiene RR** — la captura empezó hoy. El panel no
+    se dibuja hasta la próxima sesión, y solo si la banda reporta RR (bit 4 de
+    los flags GATT); no se ha podido comprobar que la de cuyi lo haga.
+    · `hrv.js` (nuevo), `SessionSummary.jsx`
+- [2026-08-14] **Se captura TODO lo que manda el sensor.** Pedido del usuario, para
+  poder cambiar los gráficos después sin haber perdido el dato. Banda del usuario:
+  **Decathlon pulsómetro Bluetooth + ANT+** (solo el lado BLE es accesible desde
+  el navegador).
+  - **Bug encontrado**: `requestDevice()` pedía únicamente `heart_rate`, así que el
+    navegador **negaba el acceso** a batería e info del dispositivo. Se agregó
+    `optionalServices: [battery_service, device_information]`. **OJO: el permiso
+    se decide al emparejar** → una banda ya emparejada seguirá sin dar esos
+    servicios hasta que se la olvide y se empareje de nuevo.
+  - `parseHeartRate` ya leía la **energía gastada** (kJ, bit 3) y la tiraba
+    (`i += 2`). Ahora se guarda.
+  - **Nuevas lecturas al conectar** (`readExtras`, cada una con su try/catch, todas
+    opcionales): `body_sensor_location` (0x2A38 → Chest/Wrist/…), **nivel de
+    batería** (0x180F, lectura + notificaciones si la banda las soporta), y
+    fabricante / modelo / firmware (0x180A). Se llama DESPUÉS de que el pulso ya
+    fluye y con `.catch()`: perder cualquiera de estos jamás debe costar la
+    conexión.
+  - En cada muestra ahora van `contact` y `energy` **siempre que la banda los
+    reporte** (antes solo `contact:false`). Se prefirió explícito sobre compacto:
+    guardar solo las anomalías obliga a todo consumidor futuro a conocer la
+    convención.
+  - **Columna nueva `sessions.hr_device` (JSON)**: `{name, manufacturer, model,
+    firmware, sensorLocation, battery: [{t, pct}]}`. Un blob extensible en vez de
+    una columna por campo, porque cada banda expone cosas distintas. La batería se
+    anota solo cuando cambia el entero.
+  - Verificado el viaje completo con una sesión de prueba (creada y borrada):
+    `hr_device` con batería, y muestras con `contact`, `energy` y `rr` vuelven
+    intactas por la API. · `heartRate.js`, `Dashboard.jsx`, `db.py`,
+    `serializers.py`
+- [2026-08-14] **Fusión de paquetes en el mismo segundo + evento `battery-low`.**
+  - La serie está indexada por segundo entero, y `if (last && t <= last.t) return`
+    **descartaba el paquete completo, con sus RR**, cuando la banda mandaba dos
+    dentro del mismo segundo. Ahora se **fusiona**: refresca bpm/contact/energy y
+    **concatena** los RR. Ningún latido se pierde aunque el eje siga en segundos.
+  - **`battery-low`** cuando la batería baja de 15%: la serie ya se guardaba pero
+    no lo decía en el log, y es la sospechosa principal de las caídas.
+  - Chequeo cruzado: 14 tipos emitidos = 14 etiquetados en `SessionLogModal`.
+  - **Sigue SIN registrarse el motivo técnico del fallo BLE**: Web Bluetooth no
+    entrega razón en `gattserverdisconnected`; solo hay los `humanError()` de los
+    reintentos, que hoy no se anotan. Ofrecido al usuario, no implementado.
+    · `Dashboard.jsx`, `SessionLogModal.jsx`

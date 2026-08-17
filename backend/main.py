@@ -18,7 +18,7 @@ from db import (
     SessionLocal, init_db, User, Exercise, Photo, Session as SessionRow,
 )
 import seeds
-from serializers import user_data_to_json, replace_user_data
+from serializers import user_data_to_json, replace_user_data, upsert_session, delete_session
 
 
 app = FastAPI(title="Barra Austral API")
@@ -138,6 +138,35 @@ async def save_data(request: Request, username: str = Depends(current_user)):
     try:
         user = s.query(User).filter_by(username=username).one()
         replace_user_data(s, user, payload)
+        return {"status": "ok"}
+    finally:
+        s.close()
+
+
+@app.post("/api/sessions")
+async def save_session(request: Request, username: str = Depends(current_user)):
+    """Write a single session. Finishing or editing a workout uses this instead
+    of POST /api/data: the rest of the history stays in the DB untouched, so
+    nothing has to be uploaded back just to be re-inserted unchanged.
+    """
+    payload = await request.json()
+    s = SessionLocal()
+    try:
+        user = s.query(User).filter_by(username=username).one()
+        if not upsert_session(s, user, payload):
+            raise HTTPException(status_code=400, detail="session id is required")
+        return {"status": "ok", "id": payload.get("id")}
+    finally:
+        s.close()
+
+
+@app.delete("/api/sessions/{session_id:path}")
+def remove_session(session_id: str, username: str = Depends(current_user)):
+    s = SessionLocal()
+    try:
+        user = s.query(User).filter_by(username=username).one()
+        if not delete_session(s, user, session_id):
+            raise HTTPException(status_code=404, detail="session not found")
         return {"status": "ok"}
     finally:
         s.close()

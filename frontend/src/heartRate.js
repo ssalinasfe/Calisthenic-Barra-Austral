@@ -15,7 +15,17 @@ import { useSyncExternalStore } from 'react'
 
 const HR_SERVICE = 'heart_rate'                 // 0x180D
 const HR_MEASUREMENT = 'heart_rate_measurement' // 0x2A37
+const BODY_LOCATION = 'body_sensor_location'    // 0x2A38
+// Optional services. They must be declared at requestDevice() time or the
+// browser refuses access to them later, so they are listed even though plenty
+// of belts expose neither.
+const BATTERY_SERVICE = 'battery_service'       // 0x180F
+const BATTERY_LEVEL = 'battery_level'           // 0x2A19
+const DEVICE_INFO = 'device_information'        // 0x180A
 const STORAGE_KEY = 'gym_hr_device'
+
+// 0x2A38 body sensor location, per the GATT spec.
+const BODY_LOCATIONS = ['Other', 'Chest', 'Wrist', 'Finger', 'Hand', 'Ear Lobe', 'Foot']
 
 const listeners = new Set()
 
@@ -37,6 +47,16 @@ let state = {
   paired: !!loadStored(),   // a belt has been added/remembered
   error: null,
   lastAt: null,             // ms timestamp of the last measurement
+  contact: null,            // strap touching skin; null if the belt won't say
+  rr: [],                   // RR intervals (ms) from the last packet, for HRV
+  energy: null,             // energy expended (kJ), cumulative, if reported
+  // Read once on connect; any of these may stay null on a belt that doesn't
+  // expose the optional services.
+  battery: null,            // %
+  sensorLocation: null,
+  manufacturer: null,
+  model: null,
+  firmware: null,
 }
 let snapshot = { ...state }
 
@@ -61,16 +81,41 @@ function humanError(e) {
   return msg || 'Bluetooth error'
 }
 
-// Parse a Heart Rate Measurement characteristic value per the GATT spec.
-function parseHeartRate(dataview) {
-  const flags = dataview.getUint8(0)
+// Parse the whole Heart Rate Measurement characteristic per the GATT spec, not
+// just the bpm. The same packet also carries whether the strap is actually
+// touching skin — the one thing that tells a real dropout apart from a belt
+// that is connected but reading nothing — and the RR intervals, the
+// beat-to-beat times that heart-rate variability is derived from.
+function parseHeartRate(dv) {
+  const flags = dv.getUint8(0)
   const is16bit = flags & 0x01
-  return is16bit ? dataview.getUint16(1, /* littleEndian */ true) : dataview.getUint8(1)
+  let i = 1
+  const bpm = is16bit ? dv.getUint16(i, /* littleEndian */ true) : dv.getUint8(i)
+  i += is16bit ? 2 : 1
+
+  // Bit 2 says the belt reports contact at all; bit 1 is the state itself.
+  const contact = (flags >> 2) & 0x01 ? Boolean((flags >> 1) & 0x01) : null
+
+  // Energy expended in kJ, cumulative since the belt last reset it.
+  let energy = null
+  if ((flags >> 3) & 0x01) {
+    energy = dv.getUint16(i, true)
+    i += 2
+  }
+
+  // RR intervals come in 1/1024 s units; kept as whole milliseconds.
+  const rr = []
+  if ((flags >> 4) & 0x01) {
+    for (; i + 2 <= dv.byteLength; i += 2) {
+      rr.push(Math.round((dv.getUint16(i, true) / 1024) * 1000))
+    }
+  }
+  return { bpm, contact, rr, energy }
 }
 
 function onMeasurement(e) {
-  const bpm = parseHeartRate(e.target.value)
-  if (Number.isFinite(bpm) && bpm > 0) set({ bpm, lastAt: Date.now() })
+  const { bpm, contact, rr, energy } = parseHeartRate(e.target.value)
+  if (Number.isFinite(bpm) && bpm > 0) set({ bpm, contact, rr, energy, lastAt: Date.now() })
 }
 
 function onDisconnected() {
@@ -93,6 +138,45 @@ function scheduleReconnect(attempt) {
   }, Math.min(500 + attempt * 1500, 10000))
 }
 
+// Everything the belt can tell us beyond the beat itself. All of it is
+// optional — a strap that exposes none of these still works exactly as before,
+// so every read is individually guarded and simply leaves its field null.
+//
+// Battery matters most: a belt running low drops out, and without this the only
+// evidence of that is a hole in the samples with no explanation.
+async function readExtras(server, service) {
+  try {
+    const c = await service.getCharacteristic(BODY_LOCATION)
+    const v = await c.readValue()
+    set({ sensorLocation: BODY_LOCATIONS[v.getUint8(0)] ?? `Unknown (${v.getUint8(0)})` })
+  } catch { /* not exposed */ }
+
+  try {
+    const batt = await server.getPrimaryService(BATTERY_SERVICE)
+    const c = await batt.getCharacteristic(BATTERY_LEVEL)
+    set({ battery: (await c.readValue()).getUint8(0) })
+    // Not every belt supports notifying on it; the initial read already landed.
+    try {
+      c.addEventListener('characteristicvaluechanged', e => set({ battery: e.target.value.getUint8(0) }))
+      await c.startNotifications()
+    } catch { /* read-only battery */ }
+  } catch { /* no battery service, or not granted at pairing time */ }
+
+  try {
+    const info = await server.getPrimaryService(DEVICE_INFO)
+    const dec = new TextDecoder()
+    const read = async uuid => {
+      try { return dec.decode(await (await info.getCharacteristic(uuid)).readValue()).replace(/\0+$/, '') }
+      catch { return null }
+    }
+    set({
+      manufacturer: await read('manufacturer_name_string'),
+      model: await read('model_number_string'),
+      firmware: await read('firmware_revision_string'),
+    })
+  } catch { /* no device information service */ }
+}
+
 async function attach(dev) {
   device = dev
   device.removeEventListener?.('gattserverdisconnected', onDisconnected)
@@ -103,6 +187,8 @@ async function attach(dev) {
   characteristic.addEventListener('characteristicvaluechanged', onMeasurement)
   await characteristic.startNotifications()
   set({ status: 'connected', deviceName: device.name || state.deviceName, error: null })
+  // After the beat is flowing: losing these must never cost us the connection.
+  readExtras(server, service).catch(() => { /* all of it is optional */ })
 }
 
 // Open the browser chooser to pair a belt (must run from a user gesture).
@@ -114,6 +200,10 @@ async function connect() {
   try {
     const dev = await navigator.bluetooth.requestDevice({
       filters: [{ services: [HR_SERVICE] }],
+      // Access to these is decided HERE, at pairing time. A belt paired before
+      // this line existed will keep being refused them until it is forgotten
+      // and paired again.
+      optionalServices: [BATTERY_SERVICE, DEVICE_INFO],
     })
     await attach(dev)
     const name = dev.name || 'HR belt'

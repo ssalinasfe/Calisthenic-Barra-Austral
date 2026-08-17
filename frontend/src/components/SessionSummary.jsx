@@ -4,11 +4,12 @@ import {
   Legend, ResponsiveContainer, ComposedChart, Scatter,
   ReferenceArea,
 } from 'recharts'
-import { X, Download, CheckCircle, Clock, Layers, Zap, HeartPulse, ChevronDown, ChevronUp, Maximize2, ScrollText } from 'lucide-react'
+import { X, Download, CheckCircle, Clock, Layers, Zap, HeartPulse, ChevronDown, ChevronUp, Maximize2, ScrollText, Activity } from 'lucide-react'
 import { format } from 'date-fns'
 import { setNotation, fmtDuration } from '../utils'
 import { photoUrl } from '../api'
 import SessionLogModal from './SessionLogModal'
+import { computeHrv } from '../hrv'
 
 // Same columns as the backend's /api/export/csv, so both CSV paths match.
 function exportCSV(allData) {
@@ -67,6 +68,20 @@ const FAT_BURN_ZONE = { low: 112, high: 131 }
 // jitter. The chart cuts the line there instead of drawing a straight line
 // across minutes of data that was never measured.
 const HR_GAP_S = 20
+
+// Rest windows in seconds from the session start: each set's rest runs from the
+// moment that set ended until restDuration later. Shared by the chart, which
+// draws them dashed, and the HRV panel, which only measures inside them.
+function restWindows(session) {
+  const startMs = new Date(session.startTime).getTime()
+  const out = []
+  ;(session.exercises || []).forEach(ex => (ex.sets || []).forEach(set => {
+    if (!set.startedAt || !set.restDuration) return
+    const from = Math.round((new Date(set.startedAt).getTime() - startMs) / 1000) + (set.duration || 0)
+    out.push([from, from + set.restDuration])
+  }))
+  return out
+}
 
 // Line dot colored by the exercise it belongs to (payload.color).
 const ExerciseDot = ({ cx, cy, payload, r = 5 }) => {
@@ -255,14 +270,7 @@ export default function SessionSummary({ session, allData, onClose, token, headi
       return { name: ex.name, color: exColor(ei), points }
     }).filter(s => s.points.length)
 
-    // Rest windows, in seconds from the session start: each set's rest runs from
-    // the moment the set ended until restDuration later.
-    const rests = []
-    session.exercises.forEach(ex => (ex.sets || []).forEach(set => {
-      if (!set.startedAt || !set.restDuration) return
-      const from = Math.round((new Date(set.startedAt).getTime() - startMs) / 1000) + (set.duration || 0)
-      rests.push([from, from + set.restDuration])
-    }))
+    const rests = restWindows(session)
     const isResting = t => rests.some(([a, b]) => t >= a && t <= b)
 
     // The trace is drawn as two overlapping lines — solid for work, dashed for
@@ -324,6 +332,34 @@ export default function SessionSummary({ session, allData, onClose, token, headi
     const rest = lineFor(true)
     const gaps = segRest.filter((_, i) => isGap(i)).length
     return { samples, maxT, series, work, rest, hasRest: rests.length > 0, gaps }
+  }, [session])
+
+  // Heart-rate variability, from the RR intervals the belt sends with each
+  // packet. Only sessions recorded after RR capture was added carry them.
+  //
+  // Reported for the REST stretches, not the whole session: variability
+  // collapses under effort by design, so an all-in number mostly measures how
+  // much of the session was hard rather than anything about recovery. Rest is
+  // where the comparison between sessions actually means something.
+  const hrv = useMemo(() => {
+    const samples = (session.hrSamples || []).filter(s => s.rr?.length)
+    if (!samples.length) return null
+    const rests = restWindows(session)
+    const inRest = t => rests.some(([a, b]) => t >= a && t <= b)
+    const rest = []
+    const all = []
+    for (const s of samples) {
+      all.push(...s.rr)
+      if (inRest(s.t)) rest.push(...s.rr)
+    }
+    const restHrv = computeHrv(rest)
+    const allHrv = computeHrv(all)
+    if (!restHrv && !allHrv) return null
+    // Fall back to the whole session when rest alone is too thin to be worth
+    // reporting, and say so rather than passing one off as the other.
+    return restHrv
+      ? { ...restHrv, scope: 'rest' }
+      : { ...allHrv, scope: 'session' }
   }, [session])
 
   // Distribution vs the fat-burning zone: below / inside / above 112–131.
@@ -544,6 +580,49 @@ export default function SessionSummary({ session, allData, onClose, token, headi
               ))}
             </div>
           </div>
+
+          {hrv && (
+            <div>
+              <h3 className="text-white font-semibold text-sm flex items-center gap-1.5 mb-3">
+                <Activity size={15} className="text-violet-400" />
+                Heart rate variability
+              </h3>
+              <div className="bg-white/3 rounded-2xl p-4 border border-white/5">
+                <div className="flex items-end gap-2">
+                  <span className="text-3xl font-bold text-violet-300 font-mono">{hrv.rmssd}</span>
+                  <span className="text-gray-500 text-sm mb-1">ms RMSSD</span>
+                </div>
+                <p className="text-gray-500 text-xs mt-1">
+                  {hrv.scope === 'rest'
+                    ? 'measured during the rests between sets'
+                    : 'measured across the whole session — not enough beats during the rests alone'}
+                </p>
+
+                <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-white/5">
+                  <div>
+                    <p className="text-gray-500 text-[10px] uppercase tracking-wide">SDNN</p>
+                    <p className="text-white font-mono text-sm">{hrv.sdnn} <span className="text-gray-600">ms</span></p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-[10px] uppercase tracking-wide">pNN50</p>
+                    <p className="text-white font-mono text-sm">{hrv.pnn50}<span className="text-gray-600">%</span></p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-[10px] uppercase tracking-wide">Mean RR</p>
+                    <p className="text-white font-mono text-sm">{hrv.meanRr} <span className="text-gray-600">ms</span></p>
+                  </div>
+                </div>
+
+                {/* How much data is behind the numbers, and how much was thrown
+                    out as artifacts — a strap that shifts produces plenty. */}
+                <p className="text-gray-600 text-[10px] mt-3">
+                  from {hrv.beats} beats
+                  {hrv.dropped > 0 && ` · ${hrv.dropped} discarded as artifacts`}
+                  {' · compare against your own sessions, not against a reference value'}
+                </p>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={() => exportCSV(allData)}

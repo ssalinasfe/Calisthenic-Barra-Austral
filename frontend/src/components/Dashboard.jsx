@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { fetchData, saveData } from '../api'
+import { fetchData, saveData, saveSession } from '../api'
 import { useHeartRate, hrStore } from '../heartRate'
 import { useRestSound, soundStore } from '../sound'
 import { useAutoRun, autoRunStore } from '../autoRun'
@@ -84,10 +84,13 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
 
   const elapsed = useElapsed(sessionStart, status === 'active')
 
-  // Heart rate: while a session is active, collect a downsampled bpm series from
-  // the (optionally) connected BLE belt. Summary stats get saved with the session.
+  // Heart rate: while a session is active, record every reading the (optional)
+  // BLE belt sends — bpm, and where the belt reports them, skin contact and the
+  // RR intervals. Summary stats get saved with the session.
   const hr = useHeartRate()
   const hrSamplesRef = useRef([])
+  const hrFlushRef = useRef(0)      // last localStorage mirror, ms
+  const hrBatteryRef = useRef([])   // [{t, pct}] appended only when it changes
   const restSound = useRestSound()
   const autoRun = useAutoRun()
   const wakeLock = useWakeLock()
@@ -132,6 +135,26 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
     return () => clearInterval(id)
   }, [status, hr.status, hr.lastAt])
 
+  // Belt battery, sampled only on change: it moves in whole percent over an
+  // hour, and a belt running low is a prime suspect for the dropouts.
+  useEffect(() => {
+    if (status !== 'active' || !sessionStart || hr.battery == null) return
+    const arr = hrBatteryRef.current
+    if (arr.length && arr[arr.length - 1].pct === hr.battery) return
+    const t = Math.max(0, Math.round((Date.now() - new Date(sessionStart).getTime()) / 1000))
+    arr.push({ t, pct: hr.battery })
+    // A belt this low is the prime suspect for the dropouts that follow, and the
+    // series alone doesn't say it out loud in the log.
+    if (hr.battery <= 15) sessionLog.log('battery-low')
+  }, [hr.battery, status, sessionStart])
+
+  // The belt can tell us the strap stopped touching skin — the direct cause
+  // behind most "connected but silent" stretches.
+  useEffect(() => {
+    if (status !== 'active' || hr.contact == null) return
+    sessionLog.log(hr.contact ? 'contact-ok' : 'contact-lost')
+  }, [hr.contact, status])
+
   // Context for reading the trace later: which stretch ran hands-free, and
   // whether the screen was really being held awake while it did.
   useEffect(() => {
@@ -158,11 +181,35 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
     const t = Math.max(0, Math.round((hr.lastAt - new Date(sessionStart).getTime()) / 1000))
     const arr = hrSamplesRef.current
     const last = arr[arr.length - 1]
-    if (!last || t - last.t >= 5) {
-      arr.push({ t, bpm: hr.bpm })   // ~1 point / 5s
+    // The series is keyed by whole seconds, but a belt can send two packets
+    // inside one. Merge instead of dropping: the bpm is refreshed and the RR
+    // intervals are appended, so no individual beat is ever lost.
+    if (last && t <= last.t) {
+      last.bpm = hr.bpm
+      if (hr.contact != null) last.contact = hr.contact
+      if (hr.energy != null) last.energy = hr.energy
+      if (hr.rr?.length) last.rr = [...(last.rr || []), ...hr.rr]
+      return
+    }
+    // Every reading now, not a 5s digest. The old digest threw away 4 of every
+    // 5 beats, which is why the session max could miss the actual peak. Sessions
+    // upload one at a time now, so the extra size costs a single request.
+    const sample = { t, bpm: hr.bpm }
+    // Everything the packet carried, recorded as-is. Storing only the anomalies
+    // would be smaller, but future charts would have to know the convention to
+    // read it back — and a reading not written down now is gone for good.
+    if (hr.contact != null) sample.contact = hr.contact   // strap on skin
+    if (hr.energy != null) sample.energy = hr.energy      // kJ, cumulative
+    if (hr.rr?.length) sample.rr = hr.rr                  // beat-to-beat, for HRV
+    arr.push(sample)
+    // Mirrored at most every 5s: at full resolution this array reaches tens of
+    // KB, and stringifying it every second on a phone is not worth the 4 extra
+    // seconds of crash protection.
+    if (Date.now() - hrFlushRef.current > 5000) {
+      hrFlushRef.current = Date.now()
       try { localStorage.setItem(ACTIVE_HR_KEY, JSON.stringify(arr)) } catch { /* best effort */ }
     }
-  }, [hr.lastAt, hr.status, hr.bpm, status, sessionStart])
+  }, [hr.lastAt, hr.status, hr.bpm, hr.contact, hr.rr, hr.energy, status, sessionStart])
 
   useEffect(() => {
     fetchData(token)
@@ -171,6 +218,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
         setAllData(data)
         setLoading(false)
         if (changed) {
+          // Full blob on purpose: a shape migration rewrites everything at once.
           saveData(token, data).catch(() => { /* best-effort */ })
         }
       })
@@ -223,6 +271,7 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
 
   function startSession(routine, categories) {
     hrSamplesRef.current = []
+    hrBatteryRef.current = []
     // Drop the previous session's series now: without a belt connected nothing
     // would overwrite it, and a reload would resurrect it into this session.
     localStorage.removeItem(ACTIVE_HR_KEY)
@@ -267,6 +316,18 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
       hrFields.minHr = Math.min(...bpms)
       hrFields.hrSamples = hrSamples
     }
+    // What produced these numbers. Worth keeping per session: belts get
+    // replaced, firmware changes, and a battery series explains a lot of holes.
+    if (hr.paired) {
+      hrFields.hrDevice = {
+        name: hr.deviceName || null,
+        manufacturer: hr.manufacturer || null,
+        model: hr.model || null,
+        firmware: hr.firmware || null,
+        sensorLocation: hr.sensorLocation || null,
+        battery: hrBatteryRef.current,
+      }
+    }
     const session = {
       id: sessionStart,
       title: activeRoutineName || '',
@@ -304,7 +365,8 @@ export default function Dashboard({ token, username, onLock, bgImage, onBgChange
     setStatus('saving')
     const newData = { ...allData, sessions: [...(allData.sessions || []), session] }
     try {
-      await saveData(token, newData)
+      // Just this session goes up; the rest of the history stays in the DB.
+      await saveSession(token, session)
       setAllData(newData)
       setLastSession(session)
       setShowFinish(false)

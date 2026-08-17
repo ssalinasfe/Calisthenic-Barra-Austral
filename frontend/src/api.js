@@ -41,6 +41,39 @@ export async function saveData(token, data) {
   return res.json()
 }
 
+// Write one session. Preferred over saveData for anything session-shaped: the
+// rest of the history stays in the DB instead of making a round trip just to be
+// re-inserted unchanged, and a stale tab can't overwrite what it doesn't hold.
+export async function saveSession(token, session) {
+  const res = await fetch('/api/sessions', {
+    method: 'POST',
+    headers: {
+      'x-api-token': token,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(session),
+  })
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`)
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
+export async function deleteSession(token, id) {
+  const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'x-api-token': token },
+  })
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`)
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
 export async function uploadPhoto(token, file) {
   const fd = new FormData()
   fd.append('file', file)

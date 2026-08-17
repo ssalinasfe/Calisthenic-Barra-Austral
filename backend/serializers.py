@@ -68,6 +68,7 @@ def session_to_json(s: SessionRow) -> dict:
         'minHr':           s.min_hr,
         'hrSamples':       list(s.hr_samples or []),
         'events':          list(s.events or []),
+        'hrDevice':        s.hr_device or None,
         'photos':          [p.filename for p in s.photos],
         'exercises':       [session_exercise_to_json(se) for se in s.exercises],
     }
@@ -110,20 +111,110 @@ def user_data_to_json(user: User) -> dict:
     }
 
 
-# ── Replace user data from the JSON shape ────────────────────────────────────
+# ── Writing back ─────────────────────────────────────────────────────────────
+
+def write_session(db, user: User, s: dict) -> SessionRow | None:
+    """Insert one session (plus its exercises, sets and photo links) from the
+    JSON shape. Assumes any previous row with the same id is already gone.
+    """
+    if not s.get('id'):
+        return None
+    sess = SessionRow(
+        id=s['id'],
+        user_id=user.id,
+        title=s.get('title') or '',
+        date=s.get('date') or '',
+        start_time=parse_iso(s.get('startTime')),
+        end_time=parse_iso(s.get('endTime')),
+        duration_seconds=s.get('durationSeconds') or 0,
+        notes=s.get('notes') or '',
+        categories=list(s.get('categories') or []),
+        location_id=s.get('locationId'),
+        routine_id=s.get('routineId'),
+        avg_hr=s.get('avgHr'),
+        max_hr=s.get('maxHr'),
+        min_hr=s.get('minHr'),
+        hr_samples=list(s.get('hrSamples') or []),
+        events=list(s.get('events') or []),
+        hr_device=s.get('hrDevice') or None,
+    )
+    db.add(sess)
+    for i, ex in enumerate(s.get('exercises') or []):
+        se = SessionExercise(
+            session_id=sess.id,
+            position=i,
+            name=ex.get('name') or '',
+            category=ex.get('category') or 'Custom',
+        )
+        db.add(se)
+        db.flush()  # ensure se.id is available
+        for j, st in enumerate(ex.get('sets') or []):
+            db.add(SessionSet(
+                session_exercise_id=se.id,
+                position=j,
+                started_at=parse_iso(st.get('startedAt')),
+                duration=st.get('duration'),
+                reps=st.get('reps'),
+                weight=st.get('weight'),
+                rest_duration=st.get('restDuration'),
+                start_hr=st.get('startHr'),
+                avg_hr=st.get('avgHr'),
+                max_hr=st.get('maxHr'),
+            ))
+    for p in s.get('photos') or []:
+        if not p:
+            continue
+        db.add(Photo(session_id=sess.id, filename=p))
+    return sess
+
+
+def upsert_session(db, user: User, s: dict) -> bool:
+    """Write a single session, replacing only that one. This is what finishing
+    or editing a workout uses: the rest of the history never leaves the DB, so
+    a stale tab can no longer overwrite sessions it doesn't know about.
+    """
+    # start_time is NOT NULL: without this the delete below would go through and
+    # the insert would fail, turning a bad payload into an opaque 500.
+    if not s.get('id') or not s.get('startTime'):
+        return False
+    existing = db.query(SessionRow).filter_by(id=s['id'], user_id=user.id).first()
+    if existing:
+        db.delete(existing)
+        db.flush()
+    write_session(db, user, s)
+    db.commit()
+    return True
+
+
+def delete_session(db, user: User, session_id: str) -> bool:
+    row = db.query(SessionRow).filter_by(id=session_id, user_id=user.id).first()
+    if not row:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
 
 def replace_user_data(db, user: User, payload: dict) -> None:
-    """Wipe and rewrite this user's locations, routines, and sessions
-    from the provided JSON blob. Photos already on disk are preserved
-    (filenames re-attached if still referenced).
+    """Rewrite this user's locations, routines and/or sessions from a JSON blob.
+    Photos already on disk are preserved (filenames re-attached if still
+    referenced).
+
+    Only the collections actually PRESENT in the payload are touched. That way
+    saving a routine sends just {"routines": [...]} and cannot take the whole
+    session history down with it — the old all-or-nothing blob meant any stale
+    tab overwrote everything it happened to be holding.
     """
     # Delete existing rows for this user via cascading FKs.
-    for s in list(user.sessions):
-        db.delete(s)
-    for r in list(user.routines):
-        db.delete(r)
-    for l in list(user.locations):
-        db.delete(l)
+    if 'sessions' in payload:
+        for s in list(user.sessions):
+            db.delete(s)
+    if 'routines' in payload:
+        for r in list(user.routines):
+            db.delete(r)
+    if 'locations' in payload:
+        for l in list(user.locations):
+            db.delete(l)
     db.flush()
 
     # Locations first (sessions reference them).
@@ -162,52 +253,6 @@ def replace_user_data(db, user: User, payload: dict) -> None:
 
     # Sessions.
     for s in payload.get('sessions') or []:
-        if not s.get('id'):
-            continue
-        sess = SessionRow(
-            id=s['id'],
-            user_id=user.id,
-            title=s.get('title') or '',
-            date=s.get('date') or '',
-            start_time=parse_iso(s.get('startTime')),
-            end_time=parse_iso(s.get('endTime')),
-            duration_seconds=s.get('durationSeconds') or 0,
-            notes=s.get('notes') or '',
-            categories=list(s.get('categories') or []),
-            location_id=s.get('locationId'),
-            routine_id=s.get('routineId'),
-            avg_hr=s.get('avgHr'),
-            max_hr=s.get('maxHr'),
-            min_hr=s.get('minHr'),
-            hr_samples=list(s.get('hrSamples') or []),
-            events=list(s.get('events') or []),
-        )
-        db.add(sess)
-        for i, ex in enumerate(s.get('exercises') or []):
-            se = SessionExercise(
-                session_id=sess.id,
-                position=i,
-                name=ex.get('name') or '',
-                category=ex.get('category') or 'Custom',
-            )
-            db.add(se)
-            db.flush()  # ensure se.id is available
-            for j, st in enumerate(ex.get('sets') or []):
-                db.add(SessionSet(
-                    session_exercise_id=se.id,
-                    position=j,
-                    started_at=parse_iso(st.get('startedAt')),
-                    duration=st.get('duration'),
-                    reps=st.get('reps'),
-                    weight=st.get('weight'),
-                    rest_duration=st.get('restDuration'),
-                    start_hr=st.get('startHr'),
-                    avg_hr=st.get('avgHr'),
-                    max_hr=st.get('maxHr'),
-                ))
-        for p in s.get('photos') or []:
-            if not p:
-                continue
-            db.add(Photo(session_id=sess.id, filename=p))
+        write_session(db, user, s)
 
     db.commit()

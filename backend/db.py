@@ -103,6 +103,10 @@ class Session(Base):
     # Deliberately NULL-able with no default: NULL marks a session the backfill
     # in seeds.py has not seen yet, [] one that has nothing to record.
     events           = Column(JSON)
+    # Everything the belt reports about itself: name, manufacturer, model,
+    # firmware, sensor location, and the battery series. One extensible JSON
+    # blob rather than a column per field — belts differ in what they expose.
+    hr_device        = Column(JSON)
 
     user      = relationship('User', back_populates='sessions')
     exercises = relationship('SessionExercise', back_populates='session',
@@ -166,6 +170,7 @@ def init_db():
         conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS hr_samples JSON DEFAULT '[]'"))
         # No DEFAULT on purpose — existing rows stay NULL so backfill_session_events() can find them.
         conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS events JSON"))
+        conn.execute(text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS hr_device JSON"))
         conn.execute(text("ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS start_hr INTEGER"))
         conn.execute(text("ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS avg_hr INTEGER"))
         conn.execute(text("ALTER TABLE session_sets ADD COLUMN IF NOT EXISTS max_hr INTEGER"))

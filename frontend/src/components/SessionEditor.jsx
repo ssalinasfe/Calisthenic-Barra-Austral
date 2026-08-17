@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { X, Trash2, Save, AlertTriangle, Plus, Pencil, Search, Check, MapPin, FileText, Camera, Image, Tag, CalendarClock, Activity } from 'lucide-react'
 import { format } from 'date-fns'
-import { saveData, uploadPhoto, deletePhoto, photoUrl } from '../api'
+import { saveSession, deleteSession, uploadPhoto, deletePhoto, photoUrl } from '../api'
 import { fmtDuration, sessionCategories } from '../utils'
 import { EXERCISES, CATEGORY_LABEL, CATEGORY_PILL } from '../exercises'
 
@@ -451,7 +451,7 @@ export default function SessionEditor({ session, allData, token, onSave, onClose
         ...allData,
         sessions: allData.sessions.map(s => s.id === session.id ? updatedSession : s),
       }
-      await saveData(token, newData)
+      await saveSession(token, updatedSession)   // solo esta sesión viaja
       onSave(newData)
       onClose()
     } catch {
@@ -468,7 +468,7 @@ export default function SessionEditor({ session, allData, token, onSave, onClose
         ...allData,
         sessions: allData.sessions.filter(s => s.id !== session.id),
       }
-      await saveData(token, newData)
+      await deleteSession(token, session.id)
       onSave(newData)
       onClose()
     } catch {

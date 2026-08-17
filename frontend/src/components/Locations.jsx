@@ -37,7 +37,7 @@ export default function Locations({ allData, token, onDataChange }) {
         ? locations.map(l => (l.id === id ? newLoc : l))   // keep position
         : [...locations, newLoc]
       const newData = { ...allData, locations: newLocations }
-      await saveData(token, newData)
+      await saveData(token, { locations: newLocations })
       onDataChange(newData)
       setEditing(null)
     } catch {
@@ -53,12 +53,11 @@ export default function Locations({ allData, token, onDataChange }) {
       const sessions = (allData.sessions || []).map(s =>
         s.locationId === loc.id ? { ...s, locationId: null } : s
       )
-      const newData = {
-        ...allData,
-        sessions,
-        locations: locations.filter(l => l.id !== loc.id),
-      }
-      await saveData(token, newData)
+      const remaining = locations.filter(l => l.id !== loc.id)
+      const newData = { ...allData, sessions, locations: remaining }
+      // Las sesiones se actualizan solas: locations.id tiene ON DELETE SET NULL,
+      // así que basta con mandar las ubicaciones que quedan.
+      await saveData(token, { locations: remaining })
       onDataChange(newData)
       setConfirmDelete(null)
     } catch {

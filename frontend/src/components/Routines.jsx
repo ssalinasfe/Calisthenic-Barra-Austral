@@ -402,7 +402,8 @@ export default function Routines({ allData, token, onDataChange }) {
     setSaving(true)
     try {
       const newData = { ...allData, routines: newRoutines }
-      await saveData(token, newData)
+      // Solo las rutinas: /api/data ahora reemplaza únicamente lo que recibe.
+      await saveData(token, { routines: newRoutines })
       onDataChange(newData)
       setEditing(null)
       setConfirmDelete(null)
