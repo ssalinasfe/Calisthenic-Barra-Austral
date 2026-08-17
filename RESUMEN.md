@@ -32,11 +32,14 @@ Acceso a la BD: `docker exec barra-austral-db psql -U calistia -d calistia -c ".
 - Categorías/colores y catálogo → `frontend/src/exercises.js`.
 - Editor de rutinas y selector de categoría → `frontend/src/components/Routines.jsx`.
 - Modelos/semillas backend → `backend/db.py`, `backend/seeds.py`, `backend/seed_cuyi.py`.
+  (`seed_demo.py` ya no existe; los datos demo se generan en `seeds.py`.)
 
 **El registro cronológico de cambios está en la _Bitácora de cambios_ al final
 del archivo.**
 
 **Gotchas / decisiones:**
+- **`data/users/*.json` es storage MUERTO** (previo a Postgres, mayo 2026). Ningún
+  archivo del backend lo referencia. No editarlo creyendo que cambia algo.
 - Hay git, pero gran parte del trabajo previo se hizo sin él → este MD sigue
   siendo la memoria con el "por qué" de cada decisión.
 - **Convención de nombres del catálogo**: si un ejercicio requiere equipo, el
@@ -84,7 +87,14 @@ frontend mantiene ese blob en memoria y lo reescribe entero en cada cambio
   (`init_db`) y ejecuta las semillas (`run_seeds`). Endpoints:
   - `POST /api/login` — login por usuario/contraseña; devuelve token. Bloqueo tras
     6 intentos fallidos (requiere reiniciar el contenedor).
-  - `GET/POST /api/data` — leer / reemplazar el blob completo del usuario.
+  - `GET /api/data` — leer el blob completo del usuario.
+  - `POST /api/data` — **reemplazo PARCIAL**: solo borra y reescribe las
+    colecciones **presentes** en el payload. `{"routines":[...]}` no toca
+    sesiones. **OJO: mandar `{"x":[]}` borra esa colección entera** (así se
+    perdieron las rutinas de cuyi el 14-ago).
+  - `POST /api/sessions` — upsert de UNA sesión (lo que usa terminar/editar un
+    entrenamiento). Exige `id` y `startTime` o devuelve 400.
+  - `DELETE /api/sessions/{id}` — borra una sesión; 404 si no existe.
   - `GET /api/me`, `GET /api/exercises` — usuario actual y catálogo.
   - `POST/GET/DELETE /api/photos` — subida/consulta/borrado de fotos (máx. 20 MB,
     extensiones permitidas jpg/jpeg/png/webp/heic).
@@ -112,9 +122,17 @@ frontend mantiene ese blob en memoria y lo reescribe entero en cada cambio
   descanso, tiempo, resistencia, `superset_group`, posición).
 - `sessions` — sesión realizada (título, fecha, inicio/fin, duración, notas,
   `categories` (grupos musculares elegidos por el usuario), ubicación,
-  `routine_id` como referencia débil).
+  `routine_id` como referencia débil). Columnas de pulso:
+  - `avg_hr` / `max_hr` / `min_hr` — agregados de la sesión.
+  - `hr_samples` — **toda** lectura de la banda, una por segundo:
+    `[{t, bpm, contact?, energy?, rr?}]`. `t` = segundos desde el inicio, eje
+    compartido por el gráfico, los eventos y el HRV. Ya NO se diezma.
+  - `events` — log de diagnóstico `[{t, type, inferred?}]`. **NULL = el backfill
+    de `seeds.py` no la ha visto; `[]` = vista y sin nada que anotar.**
+  - `hr_device` — identidad de la banda y serie de batería:
+    `{name, manufacturer, model, firmware, sensorLocation, battery:[{t,pct}]}`.
 - `session_exercises` / `session_sets` — ejercicios y series efectivas por sesión
-  (reps, peso, duración, descanso).
+  (reps, peso, duración, descanso, `start_hr`/`avg_hr`/`max_hr`).
 - `photos` — fotos asociadas a una sesión.
 
 ---
@@ -126,9 +144,30 @@ muestra `Dashboard`. El token y el fondo se guardan en `localStorage`. Fondo de
 pantalla personalizable con overlay.
 
 ### Navegación principal (`Dashboard.jsx`)
-Cuatro pestañas: **Train · History · Calendar · More**. Gestiona la sesión activa
-(persistida en `localStorage` como `gym_active_session`), el cronómetro y el
-guardado.
+**Cinco** pestañas (const `NAV`): **Train · Calendar · Muscles · Progress ·
+More**. History **no** es pestaña: vive dentro de More. Gestiona la sesión
+activa, el cronómetro y el guardado.
+
+Claves de `localStorage` de la sesión activa (tres, a propósito separadas —
+cadencias de escritura distintas):
+- `gym_active_session` — estructura de la sesión; se reescribe al cambiar un set.
+- `gym_active_hr` — serie de pulso; espejo cada ≤5s mientras llegan lecturas.
+- `gym_session_log` — log de eventos; se escribe en CADA evento.
+
+### Módulos (no componentes) en `frontend/src`
+- **`api.js`** — `fetchData`, `saveData` (parcial), `saveSession`,
+  `deleteSession`, fotos.
+- **`heartRate.js`** — Web Bluetooth, store externo. Parsea el paquete GATT
+  completo (bpm, contacto, RR, energía) y lee batería / ubicación / fabricante /
+  modelo / firmware al conectar.
+- **`sound.js`** — beep de descanso y tics (`gym_rest_beep`, persistido).
+- **`autoRun.js`** — piloto automático de circuito + coordinación entre tarjetas
+  (solo un descanso corriendo a la vez). No persistido.
+- **`wakeLock.js`** — mantiene la pantalla encendida (`gym_wake_lock`, persistido).
+- **`sessionLog.js`** — log de eventos de diagnóstico de la sesión.
+- **`hrv.js`** — RMSSD/SDNN/pNN50 desde intervalos RR, con filtro de artefactos.
+- **`exercises.js`** — catálogo, colores y `migrateData`.
+- **`utils.js`** — `setNotation`, `fmtDuration`, `sessionCategories`, etc.
 
 ### Componentes clave
 - **`LockScreen`** — login con usuario/contraseña; estado bloqueado tras fallos.
@@ -140,11 +179,15 @@ guardado.
 - **`Calendar`** — vista mensual. Cada día se colorea **solo con las sesiones
   realizadas**, mezclando el color de los grupos entrenados; resumen mensual y
   agenda semanal de rutinas. (Ver reglas de color abajo.)
-- **`More`** — menú con: **Routines**, **Locations**, **Documentation**,
-  **Progress** (gráficos por ejercicio) y **Muscles** (estadísticas por músculo).
+- **`More`** — menú con cinco secciones: **History**, **Routines**, **Locations**,
+  **Heart Rate** (emparejar la banda y ver bpm en vivo) y **Documentation**.
+  Muscles y Progress **no** están acá: son pestañas propias (`MuscleStats.jsx`,
+  `ExerciseProgress.jsx`).
 - **`Routines`** — crear/editar rutinas: ejercicios, tempo/reps/sets/descanso,
   supersets, días programados y **categoría/color**.
-- **`Settings`** — fondo de pantalla, bloqueo, etc.
+- **`SessionLogModal`** — visor del log de eventos ("View logs"), abierto desde la
+  sesión activa y desde el resumen.
+- **`Settings`** — fondo de pantalla y toggle del wake lock.
 
 ### Catálogo y colores (`exercises.js`)
 - `EXERCISES` — catálogo con nombre EN/ES, categoría y músculos.
@@ -180,10 +223,12 @@ guardado.
 
 ## 5. Usuarios y rutinas sembradas
 
-- **`cuyi`** — contraseña = `API_TOKEN` (`.env`). Tiene las 15 rutinas del PDF
-  (Push/Pull/Squats niveles 1–5) más una rutina combinada
-  **"Push L3 + Pull L2 + Squat L3"** (categorías Push+Pull+Piernas).
-- **`demo`** — contraseña `1234`. **Datos de demostración jun–oct 2025** (76
+- **`cuyi`** — contraseña = `API_TOKEN` (`.env`). **17 rutinas en la BD**, pero
+  **el seeder solo tiene 15** (`seed_cuyi.routines_for_cuyi()`: Push/Pull/Squats
+  niveles 1–5). Las otras dos las creó el usuario y **NO se regeneran**:
+  **"Push L3 + Pull L2 + Squat L3"** y **"Misión Rusa (Kettlebell)"**. Si se
+  borran, hay que sacarlas de un backup (pasó el 14-ago).
+- **`demo`** — contraseña `1234`. **Datos de demostración jun–oct 2026** (76
   sesiones con progresión realista de calistenia, HR, pesos y 9 fotos; ver
   bitácora 2026-07-18). Rutinas: Push Day, Pull Day, Leg Day, Full Body.
   Ubicaciones: Parque Bustamante, Casa, Cerro San Cristóbal. IDs de sesión con
@@ -213,6 +258,18 @@ La app queda disponible en `http://localhost:${PORT}` (por defecto 50666).
 
 ```bash
 docker exec barra-austral-db pg_dump -U calistia -d calistia > backup_calistia_$(date +%Y%m%d_%H%M%S).sql
+```
+
+Los `backup_*.sql` están en `.gitignore`: **traen tokens y hashes de contraseña**.
+También está ignorado `data/photos/` (fotos personales, ~127 MB).
+
+Verificar un respaldo restaurándolo en una base desechable (no basta con que el
+archivo exista):
+```bash
+docker exec barra-austral-db psql -U calistia -d postgres -c "CREATE DATABASE prueba_restore;"
+docker exec -i barra-austral-db psql -U calistia -d prueba_restore < backup_XXX.sql
+docker exec barra-austral-db psql -U calistia -d prueba_restore -c "SELECT count(*) FROM sessions;"
+docker exec barra-austral-db psql -U calistia -d postgres -c "DROP DATABASE prueba_restore;"
 ```
 
 ---
@@ -1064,3 +1121,24 @@ docker exec barra-austral-db pg_dump -U calistia -d calistia > backup_calistia_$
     entrega razón en `gattserverdisconnected`; solo hay los `humanError()` de los
     reintentos, que hoy no se anotan. Ofrecido al usuario, no implementado.
     · `Dashboard.jsx`, `SessionLogModal.jsx`
+- [2026-08-14] **Auditoría del RESUMEN contra el código.** El usuario pidió
+  verificar que lo que dice sea cierto. Estaba desactualizado en varias cosas:
+  - Decía "**cuatro** pestañas Train · History · Calendar · More". Son **cinco**
+    (`NAV`): Train · Calendar · Muscles · Progress · More, y **History no es
+    pestaña**, vive dentro de More junto a Routines, Locations, Heart Rate y
+    Documentation.
+  - La sección de frontend solo describía `exercises.js`. Faltaban **ocho
+    módulos**: `api.js`, `heartRate.js`, `sound.js`, `autoRun.js`, `wakeLock.js`,
+    `sessionLog.js`, `hrv.js`, `utils.js`. Agregados.
+  - Decía que cuyi tiene "15 rutinas + 1 combinada". Son **17 en la BD y solo 15
+    en el seeder**: el combo y Misión Rusa NO se regeneran.
+  - Datos demo: decía "jun–oct **2025**", son **2026** (verificado en la BD).
+  - Referenciaba `backend/seed_demo.py`, que **ya no existe**.
+  - No advertía que **`data/users/*.json` es storage muerto** previo a Postgres.
+  - Sección 7: agregado el procedimiento para **verificar un respaldo
+    restaurándolo** en una base desechable, y por qué los dumps y las fotos están
+    en `.gitignore`.
+  - Verificación cruzada automática al final: los 9 módulos declarados existen,
+    todo módulo existente está documentado, los componentes citados existen, las
+    **6 claves de `localStorage`** del código están descritas y los **14
+    endpoints** de `main.py` aparecen en la sección 2.
